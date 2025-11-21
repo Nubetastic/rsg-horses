@@ -1,23 +1,23 @@
 Config = {}
 lib.locale()
 
--- debug
-Config.Debug = false
-
 Config = {
     horsesShopItems ={
-        { name = 'horse_brush',     amount = 10, price = 5 },
-        { name = 'horse_lantern',   amount = 10, price = 10 },
-        { name = 'sugarcube',       amount = 50, price = 0.05 },
-        { name = 'horse_carrot',    amount = 50, price = 0.10 },
-        { name = 'horse_apple',     amount = 50, price = 0.10 },
-        { name = 'haysnack',        amount = 50, price = 0.25 },
-        { name = 'horsemeal',       amount = 50, price = 0.50 },
-        { name = 'horse_stimulant', amount = 25, price = 2 },
-        { name = 'horse_reviver',   amount = 25, price = 10 }
+        { name = 'horse_brush',     price = string.format("%.2f", 5) },
+        { name = 'horse_lantern',   price = string.format("%.2f", 50) },
+        { name = 'sugarcube',       price = string.format("%.2f", 1) },
+        { name = 'horse_apple',     price = string.format("%.2f", .5) },
+        { name = 'horse_carrot',    price = string.format("%.2f", .6) },
+        { name = 'horse_stimulant', price = string.format("%.2f", 3) },
+        { name = 'horse_reviver',   price = string.format("%.2f", 5) },
+        { name = 'haysnack',        price = string.format("%.2f", 1.25) },
+        { name = 'horsemeal',       price = string.format("%.2f", 1.5) },
     },
     PersistStock = false, --should stock save in database and load it after restart, to 'remember' stock value before restart
 }
+
+-- debug
+Config.Debug = false
 
 -- horse inventory hotkey, please refer to '[framework]/rsg-core/shared/keybinds.lua' for complete list of hotkeys
 Config.HorseInvKey = 0x760A9C6F -- G
@@ -82,6 +82,9 @@ Config.AllowTwoPlayersRide = true -- if true two players can ride but may have s
 Config.DeathGracePeriod    = 60000 -- grace period to let player attempt to revive the horse
 Config.MoveHorseBasePrice  = 10
 Config.MoveFeePerMeter     = 0.01
+
+Config.playerStable = 'allStables'
+Config.EnableMoveHorse    = false
 
 ---------------------------------
 -- horse inventory weight by level
@@ -173,12 +176,13 @@ Config.Blip = {
 ---------------------------------
 -- stable npc settings
 ---------------------------------
-Config.DistanceSpawn = 20.0
+Config.DistanceSpawn = 40.0
 Config.FadeIn = true
 
 ---------------------------------
 -- stable npcs
 ---------------------------------
+
 Config.StableSettings = {
 
     {   -- colter

@@ -388,7 +388,12 @@ lib.callback.register('rsg-horses:server:GetHorse', function(source, stable)
     local Player = RSGCore.Functions.GetPlayer(src)
     if not Player then return end
     local horses = {}
-    local Result = MySQL.query.await('SELECT * FROM player_horses WHERE citizenid=@citizenid AND stable=@stable', { ['@citizenid'] = Player.PlayerData.citizenid, ['@stable'] = stable })
+    local Result
+    if Config.playerStable == 'allStables' then
+        Result = MySQL.query.await('SELECT * FROM player_horses WHERE citizenid=@citizenid', { ['@citizenid'] = Player.PlayerData.citizenid })
+    else
+        Result = MySQL.query.await('SELECT * FROM player_horses WHERE citizenid=@citizenid AND stable=@stable', { ['@citizenid'] = Player.PlayerData.citizenid, ['@stable'] = stable })
+    end
     for i = 1, #Result do
         horses[#horses + 1] = Result[i]
     end
@@ -587,27 +592,25 @@ RegisterNetEvent('rsg-horses:server:AcceptTrade', function(fromId)
 end)
 
 -----------------------------------
--- move horse between stables
+-- generate horseid
 -----------------------------------
 RegisterServerEvent('rsg-horses:server:MoveHorse', function(horseId, newStableId)
+    if not Config.EnableMoveHorse then return end
     local src = source
     local Player = RSGCore.Functions.GetPlayer(src)
     if not Player then return end
 
     local citizenid = Player.PlayerData.citizenid
 
-    -- verify ownership
     local horse = MySQL.query.await('SELECT * FROM player_horses WHERE id = ? AND citizenid = ?', {horseId, citizenid})
-    
     if not horse or not horse[1] then
         TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_error_not_own_horse'), type = 'error', duration = 5000 })
         return
     end
 
-    -- verify stable exists and get coordinates
     local currentStable = nil
     local newStable = nil
-    
+
     for _, stableConfig in pairs(Config.StableSettings) do
         if stableConfig.stableid == horse[1].stable then
             currentStable = stableConfig
@@ -622,24 +625,21 @@ RegisterServerEvent('rsg-horses:server:MoveHorse', function(horseId, newStableId
         return
     end
 
-    -- check if horse is already at that stable
     if horse[1].stable == newStableId then
         TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_error_horse_already_there'), type = 'error', duration = 5000 })
         return
     end
 
-    -- calculate distance-based fee
     local baseFee = Config.MoveHorseBasePrice
     local feePerMeter = Config.MoveFeePerMeter
     local distance = 0
-    
+
     if currentStable then
         distance = #(currentStable.coords - newStable.coords)
     end
-    
+
     local moveFee = math.ceil(baseFee + (distance * feePerMeter))
 
-    -- Attempt to deduct fee
     if not Player.Functions.RemoveMoney('cash', moveFee) then
         TriggerClientEvent('ox_lib:notify', src, {
             title = locale('sv_error_insufficient_funds'),
@@ -650,7 +650,6 @@ RegisterServerEvent('rsg-horses:server:MoveHorse', function(horseId, newStableId
         return
     end
 
-    -- Move horse to new stable
     MySQL.update('UPDATE player_horses SET stable = ? WHERE id = ? AND citizenid = ?', {newStableId, horseId, citizenid})
 
     TriggerClientEvent('ox_lib:notify', src, {
@@ -661,9 +660,6 @@ RegisterServerEvent('rsg-horses:server:MoveHorse', function(horseId, newStableId
     })
 end)
 
------------------------------------
--- generate horseid
------------------------------------
 function GenerateHorseid()
     local UniqueFound = false
     local horseid = nil
