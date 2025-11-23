@@ -278,7 +278,11 @@ RegisterNetEvent('rsg-horses:client:custShop', function(data)
     end
     local horsesdata = data.player
     local horseped = horsesdata.horse
-    local targetStableId = data.stableid or horsesdata.stable
+    local targetStableId = data.stableid
+    if not targetStableId or targetStableId == 'allStables' then
+        lib.notify({ title = locale('cl_error_title'), type = 'error', duration = 7000 })
+        return
+    end
     for k, v in pairs(Config.StableSettings) do
         if targetStableId == v.stableid then
             DoScreenFadeOut(0)
@@ -1586,9 +1590,9 @@ AddEventHandler("rsg-horses:client:revivehorse", function(item, data)
 
         IsBeingRevived = true
         RequestControl(horsePed)
-
-        local healAnim1Dict1 = "mech_skin@sample@base"
-        local healAnim1 = "sample_low"
+        
+        local healAnim1Dict1 = "mech_revive@unapproved"
+        local healAnim1 = "revive"
 
         loadAnimDict(healAnim1Dict1)
 
