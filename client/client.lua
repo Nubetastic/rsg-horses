@@ -54,6 +54,20 @@ local function GetLevelProgress(xp)
     end
     return 10, 100
 end
+
+local function GetHorsePriceByModel(model)
+    if not model then return nil end
+    for _, breedData in pairs(HorseBreed) do
+        if breedData.models then
+            for _, modelData in ipairs(breedData.models) do
+                if modelData[2] == model then
+                    return breedData.price
+                end
+            end
+        end
+    end
+    return nil
+end
 -------------------
 local lanternequiped = false
 local lanternUsed = false
@@ -70,6 +84,7 @@ local Customize = false
 local RotatePrompt
 local CustomizePrompt = GetRandomIntInRange(0, 0xffffff)
 local Components = lib.load('shared.horse_comp')
+local HorseBreed = lib.load('shared.horse_breed')
 local CurrentPrice = 0
 local initialHorseComps = {}
 lib.locale()
@@ -158,6 +173,7 @@ end
 -- flee horse
 ------------------------------------
 local function Flee()
+    if horsePed == 0 or not DoesEntityExist(horsePed) then return end
     TaskAnimalFlee(horsePed, cache.ped, -1)
     Wait(10000)
     if Config.StoreFleedHorse then
@@ -168,9 +184,14 @@ local function Flee()
     DeleteEntity(horsePed)
     SetEntityAsNoLongerNeeded(horsePed)
     horsePed = 0
+    TriggerEvent('rsg-horses:client:tracker:clearHorse')
     HorseCalled = false
     if horseBlip then RemoveBlip(horseBlip) horseBlip = nil end
 end
+
+RegisterNetEvent('rsg-horses:client:tracker:requestFlee', function()
+    Flee()
+end)
 
 ------------------------------------
 -- exports
@@ -290,6 +311,7 @@ RegisterNetEvent('rsg-horses:client:custShop', function(data)
             local ped = SpawnHorses(horseped, v.horsecustom, v.horsecustom.w)
             DeleteEntity(horsePed)
             horsePed = 0
+            TriggerEvent('rsg-horses:client:tracker:clearHorse')
             HorseCalled = false
             TriggerServerEvent('rsg-horses:server:SetPlayerBucket', true, ped)
             createCamera(ped, horsesdata)
@@ -544,7 +566,8 @@ local function SpawnHorse()
                 local heading = 300
 
                 local prevhorse = horsePed
-                if prevhorse then
+                if prevhorse ~= 0 and DoesEntityExist(prevhorse) then
+                    TriggerEvent('rsg-horses:client:tracker:clearHorse')
                     getControlOfEntity(prevhorse)
                     if horseBlip then RemoveBlip(horseBlip) horseBlip = nil end
 
@@ -552,7 +575,12 @@ local function SpawnHorse()
                     DeleteEntity(prevhorse)
                     DeletePed(prevhorse)
                     SetEntityAsNoLongerNeeded(prevhorse)
-                    prevhorse = 0
+                    local timeout = GetGameTimer() + 5000
+                    while DoesEntityExist(prevhorse) and GetGameTimer() < timeout do
+                        Wait(50)
+                        DeleteEntity(prevhorse)
+                    end
+                    horsePed = 0
                 end
 
                 if onRoad then
@@ -780,6 +808,7 @@ local function SpawnHorse()
                 Wait(5000)
 
                 horseSpawned = true
+                TriggerEvent('rsg-horses:client:tracker:setHorse', horsePed)
                 HorseCalled = true
 
                 if Config.Automount == true then
@@ -990,6 +1019,8 @@ AddEventHandler('onResourceStop', function(resource)
     if (horsePed ~= 0) then
         DeletePed(horsePed)
         SetEntityAsNoLongerNeeded(horsePed)
+        horsePed = 0
+        TriggerEvent('rsg-horses:client:tracker:clearHorse')
     end
 end)
 
@@ -1001,13 +1032,14 @@ RegisterNetEvent('rsg-horses:client:SpawnHorse', function(data)
         DeletePed(horsePed)
         SetEntityAsNoLongerNeeded(horsePed)
         horsePed = 0
+        TriggerEvent('rsg-horses:client:tracker:clearHorse')
     end
     TriggerServerEvent("rsg-horses:server:SetHoresActive", data.player.id)
     lib.notify({ title = locale('cl_success_title'), description = locale('cl_success_horse_active'), type = 'success', duration = 7000 })
 end)
 
 AddEventHandler('rsg-horses:client:FleeHorse', function()
-    if horsePed then
+    if horsePed ~= 0 and DoesEntityExist(horsePed) then
         getControlOfEntity(horsePed)
 
         if horseBlip then
@@ -1020,6 +1052,7 @@ AddEventHandler('rsg-horses:client:FleeHorse', function()
         SetEntityAsNoLongerNeeded(horsePed)
 
         horsePed = 0
+        TriggerEvent('rsg-horses:client:tracker:clearHorse')
         HorseCalled = false
     end
 end)
@@ -1137,15 +1170,8 @@ RegisterNetEvent('rsg-horses:client:MenuDel', function(data)
 
     local options = {}
     for k, v in pairs(horses) do
-        -- Calculate sell price (50% of original)
-        local HorseSettings = lib.load('shared.horse_settings')
-        local sellPrice = 0
-        for _, horseSetting in pairs(HorseSettings) do
-            if horseSetting.horsemodel == v.horse then
-                sellPrice = horseSetting.horseprice * 0.5
-                break
-            end
-        end
+        local basePrice = GetHorsePriceByModel(v.horse) or 0
+        local sellPrice = basePrice * 0.5
         
         options[#options + 1] = {
             title = v.name,
@@ -1215,6 +1241,7 @@ CreateThread(function()
                             DeleteEntity(horsePed)
                             SetEntityAsNoLongerNeeded(horsePed)
                             horsePed = 0
+                            TriggerEvent('rsg-horses:client:tracker:clearHorse')
                             HorseCalled = false
                             horseSpawned = false
                         end

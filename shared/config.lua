@@ -75,7 +75,7 @@ Config.HorseInvSlots       = 25 -- horse inventory slots
 Config.CheckCycle          = 30 -- horse check system (mins) -- default 60
 Config.StarterHorseDieAge  = 7 -- starter horse age in days till it dies (days)
 Config.HorseDieAge         = 365 -- horse age in days till it dies (days)
-Config.StoreFleedHorse     = false -- store horse if flee is used
+Config.StoreFleedHorse     = true -- store horse if flee is used
 Config.EnableServerNotify  = false
 Config.KeyBind             = 'J'
 Config.AllowTwoPlayersRide = true -- if true two players can ride but may have some impact on other features
@@ -85,6 +85,7 @@ Config.MoveFeePerMeter     = 0.01
 
 Config.playerStable = 'allStables'
 Config.EnableMoveHorse    = false
+Config.HorseUpdate = 1 * 60 * 60 * 1000 -- horse update interval in ms (1 hour)
 
 ---------------------------------
 -- horse inventory weight by level
@@ -184,7 +185,7 @@ Config.FadeIn = true
 ---------------------------------
 
 Config.StableSettings = {
-
+    --[[
     {   -- colter
         stableid = 'colter',
         coords = vector3(-1334.2, 2397.41, 307.21),
@@ -193,7 +194,7 @@ Config.StableSettings = {
         horsecustom = vec4(-1344.8345, 2392.2900, 306.7908, 153.3136),
         showblip = true
     },
-
+    --]]
     {   -- vanhorn
         stableid = 'vanhorn',
         coords = vector3(2968.86, 792.97, 51.4),
@@ -256,7 +257,7 @@ Config.StableSettings = {
         horsecustom = vec4(-5526.3452, -3030.7842, -2.0329, 105.3392),
         showblip = true
     },
-
+    --[[
     {   -- emerald ranch
         stableid = 'emeraldranch',
         coords = vector3(1393.46, 353.09, 87.63),
@@ -265,5 +266,5 @@ Config.StableSettings = {
         horsecustom = vec4(1396.73, 345.73, 87.58, 58.91),
         showblip = true
     },
-
+    --]]
 }

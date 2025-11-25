@@ -1,5 +1,5 @@
 local RSGCore = exports['rsg-core']:GetCoreObject()
-local HorseSettings = lib.load('shared.horse_settings')
+local HorseBreed = lib.load('shared.horse_breed')
 lib.locale()
 
 ----------------------------------
@@ -30,6 +30,24 @@ local function ValidateComponents(components)
     end
     
     return true
+end
+
+local function GetHorseInfoByModel(model)
+    if not model then return nil end
+    for breedName, breedData in pairs(HorseBreed) do
+        if breedData.models then
+            for _, modelData in ipairs(breedData.models) do
+                if modelData[2] == model then
+                    return {
+                        price = breedData.price,
+                        label = modelData[1],
+                        breed = breedName
+                    }
+                end
+            end
+        end
+    end
+    return nil
 end
 
 ----------------------------------
@@ -180,20 +198,14 @@ RegisterServerEvent('rsg-horses:server:BuyHorse', function(model, stable, horsen
         return
     end
 
-    local horseInfo = nil
-    for k,v in pairs(HorseSettings) do
-        if v.horsemodel == model then
-            horseInfo = v
-            break
-        end
-    end
+    local horseInfo = GetHorseInfoByModel(model)
 
     if not horseInfo then
-        warn(('rsg-horses: Buy Horse. Unexpected horse model %s'):format(model))
+        warn(('rsg-horses: buy horse missing breed data for model %s'):format(tostring(model)))
         return
     end
 
-    local price = horseInfo.horseprice
+    local price = horseInfo.price
     
     -- SECURITY: Atomic transaction - remove money first
     if not Player.Functions.RemoveMoney('cash', price) then
@@ -370,13 +382,13 @@ RegisterServerEvent('rsg-horses:server:deletehorse', function(data)
         end
     end
     
-    for k, v in pairs(HorseSettings) do
-        if v.horsemodel == modelHorse then
-            local sellprice = v.horseprice * 0.5
-            Player.Functions.AddMoney('cash', sellprice)
-            TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_success_horse_sold_for')..sellprice, type = 'success', duration = 5000 })
-            break
-        end
+    local horseInfo = GetHorseInfoByModel(modelHorse)
+    if horseInfo then
+        local sellprice = horseInfo.price * 0.5
+        Player.Functions.AddMoney('cash', sellprice)
+        TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_success_horse_sold_for')..sellprice, type = 'success', duration = 5000 })
+    else
+        warn(('rsg-horses: sell horse missing breed data for model %s'):format(tostring(modelHorse)))
     end
 end)
 

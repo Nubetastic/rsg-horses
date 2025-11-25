@@ -13,6 +13,7 @@ shared_scripts {
 
 client_scripts {
     'client/client.lua',
+    'client/horsetracker.lua',
     'client/npcs.lua',
     'client/horses.lua',
     'client/action.lua',
@@ -22,12 +23,14 @@ client_scripts {
 
 files {
     'shared/horse_settings.lua',
+    'shared/horse_breed.lua',
     'shared/horse_comp.lua',
     'locales/*.json',
 }
 
 server_scripts {
     '@oxmysql/lib/MySQL.lua',
+    'server/horsespawn.lua',
     'server/server.lua',
     'server/versionchecker.lua'
 }
