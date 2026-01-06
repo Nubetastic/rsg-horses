@@ -34,8 +34,9 @@ end
 
 local function GetHorseInfoByModel(model)
     if not model then return nil end
+    
     for breedName, breedData in pairs(HorseBreed) do
-        if breedData.models then
+        if breedData.models and type(breedData.models) == "table" then
             for _, modelData in ipairs(breedData.models) do
                 if modelData[2] == model then
                     return {
@@ -48,6 +49,25 @@ local function GetHorseInfoByModel(model)
         end
     end
     return nil
+end
+
+local function CalculateHorseLevel(xp)
+    if xp <= 99 then return 1
+    elseif xp >= 100 and xp <= 199 then return 2
+    elseif xp >= 200 and xp <= 299 then return 3
+    elseif xp >= 300 and xp <= 399 then return 4
+    elseif xp >= 400 and xp <= 499 then return 5
+    elseif xp >= 500 and xp <= 999 then return 6
+    elseif xp >= 1000 and xp <= 1999 then return 7
+    elseif xp >= 2000 and xp <= 2999 then return 8
+    elseif xp >= 3000 and xp <= 3999 then return 9
+    else return 10 end
+end
+
+local function CalculateSellPrice(basePrice, horseLevel)
+    if not basePrice or basePrice == 0 then return 0 end
+    if not horseLevel then horseLevel = 1 end
+    return math.floor(basePrice * (0.25 + (0.10 * (horseLevel - 1))))
 end
 
 ----------------------------------
@@ -264,9 +284,9 @@ RegisterServerEvent('rsg-horses:server:SetHoresUnActive', function(id, stableid)
         return
     end
     
-    local activehorse = MySQL.scalar.await('SELECT id FROM player_horses WHERE citizenid = ? AND active = ?', {Player.PlayerData.citizenid, false})
-    MySQL.update('UPDATE player_horses SET active = ? WHERE id = ? AND citizenid = ?', { false, activehorse, Player.PlayerData.citizenid })
-    MySQL.update('UPDATE player_horses SET active = ? WHERE id = ? AND citizenid = ?', { false, id, Player.PlayerData.citizenid })
+    local activehorse = MySQL.scalar.await('SELECT id FROM player_horses WHERE citizenid = ? AND active = ?', {Player.PlayerData.citizenid, 1})
+    MySQL.update('UPDATE player_horses SET active = ? WHERE id = ? AND citizenid = ?', { 0, activehorse, Player.PlayerData.citizenid })
+    MySQL.update('UPDATE player_horses SET active = ? WHERE id = ? AND citizenid = ?', { 0, id, Player.PlayerData.citizenid })
     MySQL.update('UPDATE player_horses SET stable = ? WHERE id = ? AND citizenid = ?', { stableid, id, Player.PlayerData.citizenid })
 end)
 
@@ -369,9 +389,11 @@ RegisterServerEvent('rsg-horses:server:deletehorse', function(data)
     end
     
     local modelHorse = nil
+    local isActive = false
     for i = 1, #player_horses do
         if tonumber(player_horses[i].id) == tonumber(horseid) then
             modelHorse = player_horses[i].horse
+            isActive = tonumber(player_horses[i].active) == 1
             
             -- Delete horse inventory
             local horsestash = player_horses[i].name .. ' ' .. player_horses[i].horseid
@@ -384,9 +406,17 @@ RegisterServerEvent('rsg-horses:server:deletehorse', function(data)
     
     local horseInfo = GetHorseInfoByModel(modelHorse)
     if horseInfo then
-        local sellprice = horseInfo.price * 0.5
+        local horseLevel = 1
+        for i = 1, #player_horses do
+            if tonumber(player_horses[i].id) == tonumber(horseid) then
+                horseLevel = CalculateHorseLevel(player_horses[i].horsexp or 0)
+                break
+            end
+        end
+        local sellprice = CalculateSellPrice(horseInfo.price, horseLevel)
         Player.Functions.AddMoney('cash', sellprice)
         TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_success_horse_sold_for')..sellprice, type = 'success', duration = 5000 })
+        TriggerClientEvent('rsg-horses:client:despawnHorse', src)
     else
         warn(('rsg-horses: sell horse missing breed data for model %s'):format(tostring(modelHorse)))
     end
@@ -808,7 +838,7 @@ UpkeepInterval = function()
             goto continue
         end
 
-        if daysPassed >= Config.HorseDieAge then
+        if Config.HorseDieAge and daysPassed >= Config.HorseDieAge then
             
             -- Get horseid for inventory cleanup
             local horsedata = MySQL.query.await('SELECT horseid FROM player_horses WHERE id = ?', {id})

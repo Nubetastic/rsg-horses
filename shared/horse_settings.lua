@@ -27,6 +27,7 @@ local HorseSettings = {
             "Ardennes"
         }
     },
+    --[[
     ["colter"] = {
         stableid = 'colter',
         horsecoords = {
@@ -38,15 +39,10 @@ local HorseSettings = {
             vector4(-1342.87, 2398.36, 307.08, 245.73)
         },
         horsebreeds = {
-            "Gypsy Cob",
-            "Missouri Fox Trotter",
-            "Norfolk Roadster",
-            "Breton",
-            "Kladruber",
-            "Turkoman",
-            "Arabian"
+            "christmas",
         }
     },
+    --]]
     ["vanhorn"] = {
         stableid = 'vanhorn',
         horsecoords = {

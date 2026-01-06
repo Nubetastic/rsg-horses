@@ -261,12 +261,22 @@ local HorseBreed = {
             { "Gang Uncle", "a_c_horse_gang_uncle" },
             { "Gang Uncle Endless Summer", "a_c_horse_gang_uncle_endlesssummer" },
             { "John Endless Summer", "a_c_horse_john_endlesssummer" },
-            { "Murfree Brood Mange 01", "a_c_horse_murfreebrood_mange_01" },
-            { "Murfree Brood Mange 02", "a_c_horse_murfreebrood_mange_02" },
-            { "Murfree Brood Mange 03", "a_c_horse_murfreebrood_mange_03" },
             { "Winter 02", "a_c_horse_winter02_01" }
         }
-    }
+    },
+    ["christmas"] = {
+        price = 500,
+        models = {
+            { "Reindeer" , "A_C_Elk_01" },
+        }
+    },
 }
 
+_G.HorseBreed = HorseBreed
 return HorseBreed
+
+
+-- for halloween
+-- { "Murfree Brood Mange 01", "a_c_horse_murfreebrood_mange_01" },
+-- { "Murfree Brood Mange 02", "a_c_horse_murfreebrood_mange_02" },
+-- { "Murfree Brood Mange 03", "a_c_horse_murfreebrood_mange_03" },

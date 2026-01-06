@@ -56,17 +56,45 @@ local function GetLevelProgress(xp)
 end
 
 local function GetHorsePriceByModel(model)
-    if not model then return nil end
-    for _, breedData in pairs(HorseBreed) do
-        if breedData.models then
+    if Config.Debug then print("^3[PRICE LOOKUP] Starting lookup for model: ^7" .. tostring(model)) end
+    
+    if not model then 
+        if Config.Debug then print("^1[PRICE LOOKUP] Model is nil") end
+        return 0 
+    end
+    if not HorseBreed then 
+        if Config.Debug then print("^1[PRICE LOOKUP] HorseBreed is nil") end
+        return 0 
+    end
+    
+    if Config.Debug then print("^3[PRICE LOOKUP] HorseBreed loaded: ^7" .. type(HorseBreed)) end
+    
+    for breedName, breedData in pairs(HorseBreed) do
+        if Config.Debug then print("^3[PRICE LOOKUP] Checking breed: ^7" .. breedName .. " | Models: " .. tostring(breedData.models ~= nil) .. " | Price: " .. tostring(breedData.price)) end
+        
+        if breedData.models and type(breedData.models) == "table" then
             for _, modelData in ipairs(breedData.models) do
+                if Config.Debug then print("^3[PRICE LOOKUP]   Model array: ^7[" .. tostring(modelData[1]) .. ", " .. tostring(modelData[2]) .. "]") end
+                
                 if modelData[2] == model then
-                    return breedData.price
+                    if Config.Debug then print("^2[PRICE LOOKUP] *** MATCH FOUND ***") end
+                    if Config.Debug then print("^2[PRICE LOOKUP] Breed: ^7" .. breedName) end
+                    if Config.Debug then print("^2[PRICE LOOKUP] Model entry: ^7[" .. modelData[1] .. ", " .. modelData[2] .. "]") end
+                    if Config.Debug then print("^2[PRICE LOOKUP] Price: ^7" .. tostring(breedData.price)) end
+                    return breedData.price or 0
                 end
             end
         end
     end
-    return nil
+    
+    if Config.Debug then print("^1[PRICE LOOKUP] NO MATCH FOUND") end
+    return 0
+end
+
+local function CalculateSellPrice(basePrice, horseLevel)
+    if not basePrice or basePrice == 0 then return 0 end
+    if not horseLevel then horseLevel = 1 end
+    return math.floor(basePrice * (0.25 + (0.10 * (horseLevel - 1))))
 end
 -------------------
 local lanternequiped = false
@@ -83,8 +111,8 @@ local closestStable = nil
 local Customize = false
 local RotatePrompt
 local CustomizePrompt = GetRandomIntInRange(0, 0xffffff)
-local Components = lib.load('shared.horse_comp')
-local HorseBreed = lib.load('shared.horse_breed')
+local Components = lib.load('shared.horse_comp') or _G.Components
+local HorseBreed = lib.load('shared.horse_breed') or _G.HorseBreed
 local CurrentPrice = 0
 local initialHorseComps = {}
 lib.locale()
@@ -191,6 +219,18 @@ end
 
 RegisterNetEvent('rsg-horses:client:tracker:requestFlee', function()
     Flee()
+end)
+
+RegisterNetEvent('rsg-horses:client:despawnHorse', function()
+    if horsePed ~= 0 and DoesEntityExist(horsePed) then
+        SetEntityAsMissionEntity(horsePed, true, true)
+        DeleteEntity(horsePed)
+        SetEntityAsNoLongerNeeded(horsePed)
+        horsePed = 0
+        TriggerEvent('rsg-horses:client:tracker:clearHorse')
+        HorseCalled = false
+        if horseBlip then RemoveBlip(horseBlip) horseBlip = nil end
+    end
 end)
 
 ------------------------------------
@@ -362,14 +402,6 @@ RegisterNetEvent('rsg-horses:client:stablemenu', function(stableid)
         description = locale('cl_menu_horse_view_horses_sub'),
         icon = 'fa-solid fa-eye',
         event = 'rsg-horses:client:menu',
-        args = { stableid = stableid },
-        arrow = true
-    }
-    options[#options + 1] = {
-        title = locale('cl_menu_horse_sell'),
-        description = locale('cl_menu_horse_sell_sub'),
-        icon = 'fa-solid fa-coins',
-        event = 'rsg-horses:client:MenuDel',
         args = { stableid = stableid },
         arrow = true
     }
@@ -1101,6 +1133,35 @@ local function HorseOptions(data, atStableId)
             args = { player = data, stableid = atStableId },
             arrow = true
         },
+        {
+            title = locale('cl_menu_horse_sell'),
+            description = locale('cl_menu_horse_sell_sub'),
+            icon = 'fa-solid fa-coins',
+            arrow = true,
+            onSelect = function()
+                local basePrice = GetHorsePriceByModel(data.horse) or 0
+                local horseLevel = CalculateHorseLevel(data.horsexp)
+                local sellPrice = CalculateSellPrice(basePrice, horseLevel)
+                
+                if Config.Debug then
+                    print("^3[DEBUG] Horse: ^7" .. tostring(data.horse))
+                    print("^3[DEBUG] Base Price: ^7" .. tostring(basePrice))
+                    print("^3[DEBUG] Level: ^7" .. tostring(horseLevel))
+                    print("^3[DEBUG] Sell Price: ^7" .. tostring(sellPrice))
+                end
+                
+                local alert = lib.alertDialog({
+                    header = locale('cl_sell_horse_header'),
+                    content = string.format(locale('cl_sell_horse_confirm'), data.name, sellPrice),
+                    centered = true,
+                    cancel = true
+                })
+                
+                if alert == 'confirm' then
+                    TriggerServerEvent('rsg-horses:server:deletehorse', { horseid = data.id })
+                end
+            end
+        },
     }
 
     lib.registerContext({
@@ -1159,7 +1220,8 @@ RegisterNetEvent('rsg-horses:client:menu', function(data)
     lib.showContext('horses_view')
 end)
 
--- sell horse menu
+--[[
+-- sell horse menu (DEPRECATED - moved to HorseOptions)
 RegisterNetEvent('rsg-horses:client:MenuDel', function(data)
     local horses = lib.callback.await('rsg-horses:server:GetHorse', false, data.stableid)
 
@@ -1193,15 +1255,16 @@ RegisterNetEvent('rsg-horses:client:MenuDel', function(data)
         }
     end
     lib.registerContext({
-        id = 'sellhorse_menu',     -- Corrected the context ID here
+        id = 'sellhorse_menu',
         title = locale('cl_menu_sell_horse_menu'),
         position = 'top-right',
         menu = 'stable_menu',
         onBack = function() end,
         options = options
     })
-    lib.showContext('sellhorse_menu')     -- Use the correct context ID here
+    lib.showContext('sellhorse_menu')
 end)
+]]
 
 ------------------------------------
 -- horse death detection

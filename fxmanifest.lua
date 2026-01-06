@@ -9,6 +9,9 @@ shared_scripts {
     '@ox_lib/init.lua',
     'shared/config.lua',
     'shared/functions.lua',
+    'shared/horse_breed.lua',
+    'shared/horse_comp.lua',
+    'shared/horse_settings.lua',
 }
 
 client_scripts {
@@ -18,7 +21,7 @@ client_scripts {
     'client/horses.lua',
     'client/action.lua',
     'client/horseinfo.lua',
-    'client/dataview.lua'
+    'client/dataview.lua',
 }
 
 files {

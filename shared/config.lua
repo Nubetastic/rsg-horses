@@ -73,13 +73,14 @@ Config.SpawnOnRoadOnly     = false -- always spawn on road
 Config.HorseInvWeight      = 16000 -- horse inventory weight
 Config.HorseInvSlots       = 25 -- horse inventory slots
 Config.CheckCycle          = 30 -- horse check system (mins) -- default 60
+Config.HorseDieAge         = false
 Config.StarterHorseDieAge  = 7 -- starter horse age in days till it dies (days)
 Config.HorseDieAge         = 365 -- horse age in days till it dies (days)
-Config.StoreFleedHorse     = true -- store horse if flee is used
+Config.StoreFleedHorse     = false -- store horse if flee is used
 Config.EnableServerNotify  = false
 Config.KeyBind             = 'J'
 Config.AllowTwoPlayersRide = true -- if true two players can ride but may have some impact on other features
-Config.DeathGracePeriod    = 60000 -- grace period to let player attempt to revive the horse
+Config.DeathGracePeriod    = 5 * 60 * 1000 -- grace period to let player attempt to revive the horse
 Config.MoveHorseBasePrice  = 10
 Config.MoveFeePerMeter     = 0.01
 

@@ -4257,4 +4257,5 @@ local Components = {
     }
 }
 
+_G.Components = Components
 return Components
