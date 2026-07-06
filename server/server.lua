@@ -1,5 +1,6 @@
 local RSGCore = exports['rsg-core']:GetCoreObject()
-local HorseBreed = lib.load('shared.horse_breed')
+local HorseSettings = lib.load('shared.horse_settings')
+local HorseComp = lib.load('shared.horse_comp')
 lib.locale()
 
 ----------------------------------
@@ -12,9 +13,11 @@ local function VerifyHorseOwnership(citizenid, horseid)
     return result and result > 0
 end
 
+local function SharedStableEnabled()
+    return Config.SharedStable == true
+end
+
 local function ValidateComponents(components)
-    local HorseComp = lib.load('shared.horse_comp')
-    
     if type(components) ~= "table" then
         return false, "Invalid component type"
     end
@@ -30,44 +33,6 @@ local function ValidateComponents(components)
     end
     
     return true
-end
-
-local function GetHorseInfoByModel(model)
-    if not model then return nil end
-    
-    for breedName, breedData in pairs(HorseBreed) do
-        if breedData.models and type(breedData.models) == "table" then
-            for _, modelData in ipairs(breedData.models) do
-                if modelData[2] == model then
-                    return {
-                        price = breedData.price,
-                        label = modelData[1],
-                        breed = breedName
-                    }
-                end
-            end
-        end
-    end
-    return nil
-end
-
-local function CalculateHorseLevel(xp)
-    if xp <= 99 then return 1
-    elseif xp >= 100 and xp <= 199 then return 2
-    elseif xp >= 200 and xp <= 299 then return 3
-    elseif xp >= 300 and xp <= 399 then return 4
-    elseif xp >= 400 and xp <= 499 then return 5
-    elseif xp >= 500 and xp <= 999 then return 6
-    elseif xp >= 1000 and xp <= 1999 then return 7
-    elseif xp >= 2000 and xp <= 2999 then return 8
-    elseif xp >= 3000 and xp <= 3999 then return 9
-    else return 10 end
-end
-
-local function CalculateSellPrice(basePrice, horseLevel)
-    if not basePrice or basePrice == 0 then return 0 end
-    if not horseLevel then horseLevel = 1 end
-    return math.floor(basePrice * (0.25 + (0.10 * (horseLevel - 1))))
 end
 
 ----------------------------------
@@ -184,18 +149,10 @@ RSGCore.Functions.CreateUseableItem('horse_reviver', function(source, item)
         return
     end
 
-    TriggerClientEvent('rsg-horses:client:revivehorse', src, item, result[1])
-end)
-
-----------------------------------
--- revive horse
-----------------------------------
-RegisterServerEvent('rsg-horses:server:revivehorse', function(item)
-    local src = source
-    local Player = RSGCore.Functions.GetPlayer(source)
-
+    -- remove item first (server-authoritative), then trigger revive
     if Player.Functions.RemoveItem(item.name, 1, item.slot) then
         TriggerClientEvent('rsg-inventory:client:ItemBox', src, RSGCore.Shared.Items[item.name], 'remove', 1)
+        TriggerClientEvent('rsg-horses:client:revivehorse', src, item, result[1])
     end
 end)
 
@@ -218,14 +175,20 @@ RegisterServerEvent('rsg-horses:server:BuyHorse', function(model, stable, horsen
         return
     end
 
-    local horseInfo = GetHorseInfoByModel(model)
+    local horseInfo = nil
+    for k,v in pairs(HorseSettings) do
+        if v.horsemodel == model then
+            horseInfo = v
+            break
+        end
+    end
 
     if not horseInfo then
-        warn(('rsg-horses: buy horse missing breed data for model %s'):format(tostring(model)))
+        warn(('rsg-horses: Buy Horse. Unexpected horse model %s'):format(model))
         return
     end
 
-    local price = horseInfo.price
+    local price = horseInfo.horseprice
     
     -- SECURITY: Atomic transaction - remove money first
     if not Player.Functions.RemoveMoney('cash', price) then
@@ -257,7 +220,6 @@ RegisterServerEvent('rsg-horses:server:SetHoresActive', function(id)
     local Player = RSGCore.Functions.GetPlayer(src)
     if not Player then return end
     
-    -- SECURITY: Verify ownership
     local owned = MySQL.scalar.await('SELECT COUNT(*) FROM player_horses WHERE id = ? AND citizenid = ?', {id, Player.PlayerData.citizenid})
     if not owned or owned == 0 then
         TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_error_not_own_horse'), type = 'error', duration = 5000 })
@@ -265,7 +227,9 @@ RegisterServerEvent('rsg-horses:server:SetHoresActive', function(id)
     end
     
     local activehorse = MySQL.scalar.await('SELECT id FROM player_horses WHERE citizenid = ? AND active = ?', {Player.PlayerData.citizenid, true})
-    MySQL.update('UPDATE player_horses SET active = ? WHERE id = ? AND citizenid = ?', { false, activehorse, Player.PlayerData.citizenid })
+    if activehorse then
+        MySQL.update('UPDATE player_horses SET active = ? WHERE id = ? AND citizenid = ?', { false, activehorse, Player.PlayerData.citizenid })
+    end
     MySQL.update('UPDATE player_horses SET active = ? WHERE id = ? AND citizenid = ?', { true, id, Player.PlayerData.citizenid })
 end)
 
@@ -277,16 +241,13 @@ RegisterServerEvent('rsg-horses:server:SetHoresUnActive', function(id, stableid)
     local Player = RSGCore.Functions.GetPlayer(src)
     if not Player then return end
     
-    -- SECURITY: Verify ownership
     local owned = MySQL.scalar.await('SELECT COUNT(*) FROM player_horses WHERE id = ? AND citizenid = ?', {id, Player.PlayerData.citizenid})
     if not owned or owned == 0 then
         TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_error_not_own_horse'), type = 'error', duration = 5000 })
         return
     end
     
-    local activehorse = MySQL.scalar.await('SELECT id FROM player_horses WHERE citizenid = ? AND active = ?', {Player.PlayerData.citizenid, 1})
-    MySQL.update('UPDATE player_horses SET active = ? WHERE id = ? AND citizenid = ?', { 0, activehorse, Player.PlayerData.citizenid })
-    MySQL.update('UPDATE player_horses SET active = ? WHERE id = ? AND citizenid = ?', { 0, id, Player.PlayerData.citizenid })
+    MySQL.update('UPDATE player_horses SET active = ? WHERE citizenid = ? AND active = ?', { false, Player.PlayerData.citizenid, true })
     MySQL.update('UPDATE player_horses SET stable = ? WHERE id = ? AND citizenid = ?', { stableid, id, Player.PlayerData.citizenid })
 end)
 
@@ -296,7 +257,9 @@ end)
 RegisterServerEvent('rsg-horses:server:fleeStoreHorse', function(stableid)
     local src = source
     local Player = RSGCore.Functions.GetPlayer(src)
+    if not Player then return end
     local activehorse = MySQL.scalar.await('SELECT id FROM player_horses WHERE citizenid = ? AND active = ?', {Player.PlayerData.citizenid, 1})
+    if not activehorse then return end
     MySQL.update('UPDATE player_horses SET active = ? WHERE id = ? AND citizenid = ?', { 0, activehorse, Player.PlayerData.citizenid })
     MySQL.update('UPDATE player_horses SET stable = ? WHERE id = ? AND citizenid = ?', { stableid, activehorse, Player.PlayerData.citizenid })
 end)
@@ -344,10 +307,11 @@ RegisterServerEvent('rsg-horses:server:HorseDied', function(horseid, horsename)
 
     local cid = Player.PlayerData.citizenid
     
-    -- Get horse data
-    local horse = MySQL.query.await('SELECT * FROM player_horses WHERE citizenid = @citizenid AND horseid = @horseid', {
+    -- Get horse data (must be active/spawned to die)
+    local horse = MySQL.query.await('SELECT * FROM player_horses WHERE citizenid = @citizenid AND horseid = @horseid AND active = @active', {
         ['@citizenid'] = cid,
-        ['@horseid'] = horseid
+        ['@horseid'] = horseid,
+        ['@active'] = 1
     })
     
     if horse[1] then
@@ -389,11 +353,9 @@ RegisterServerEvent('rsg-horses:server:deletehorse', function(data)
     end
     
     local modelHorse = nil
-    local isActive = false
     for i = 1, #player_horses do
         if tonumber(player_horses[i].id) == tonumber(horseid) then
             modelHorse = player_horses[i].horse
-            isActive = tonumber(player_horses[i].active) == 1
             
             -- Delete horse inventory
             local horsestash = player_horses[i].name .. ' ' .. player_horses[i].horseid
@@ -404,21 +366,13 @@ RegisterServerEvent('rsg-horses:server:deletehorse', function(data)
         end
     end
     
-    local horseInfo = GetHorseInfoByModel(modelHorse)
-    if horseInfo then
-        local horseLevel = 1
-        for i = 1, #player_horses do
-            if tonumber(player_horses[i].id) == tonumber(horseid) then
-                horseLevel = CalculateHorseLevel(player_horses[i].horsexp or 0)
-                break
-            end
+    for k, v in pairs(HorseSettings) do
+        if v.horsemodel == modelHorse then
+            local sellprice = v.horseprice * 0.5
+            Player.Functions.AddMoney('cash', sellprice)
+            TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_success_horse_sold_for')..sellprice, type = 'success', duration = 5000 })
+            break
         end
-        local sellprice = CalculateSellPrice(horseInfo.price, horseLevel)
-        Player.Functions.AddMoney('cash', sellprice)
-        TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_success_horse_sold_for')..sellprice, type = 'success', duration = 5000 })
-        TriggerClientEvent('rsg-horses:client:despawnHorse', src)
-    else
-        warn(('rsg-horses: sell horse missing breed data for model %s'):format(tostring(modelHorse)))
     end
 end)
 
@@ -430,12 +384,14 @@ lib.callback.register('rsg-horses:server:GetHorse', function(source, stable)
     local Player = RSGCore.Functions.GetPlayer(src)
     if not Player then return end
     local horses = {}
-    local Result
-    if Config.playerStable == 'allStables' then
+    local Result = {}
+
+    if SharedStableEnabled() then
         Result = MySQL.query.await('SELECT * FROM player_horses WHERE citizenid=@citizenid', { ['@citizenid'] = Player.PlayerData.citizenid })
     else
         Result = MySQL.query.await('SELECT * FROM player_horses WHERE citizenid=@citizenid AND stable=@stable', { ['@citizenid'] = Player.PlayerData.citizenid, ['@stable'] = stable })
     end
+
     for i = 1, #Result do
         horses[#horses + 1] = Result[i]
     end
@@ -504,7 +460,6 @@ RegisterNetEvent('rsg-horses:server:SaveComponents', function(newComponents, hor
         return
     end
     
-    local newComponents = newComponents or {}
     local currentComponents = json.decode(horseData.components) or {}
     local price = CalculatePrice(newComponents, currentComponents)
 
@@ -535,7 +490,6 @@ RegisterNetEvent('rsg-horses:server:TradeHorse', function(playerId, horseId)
         return
     end
     
-    -- SECURITY: Distance check
     local playerPed = GetPlayerPed(src)
     local targetPed = GetPlayerPed(playerId)
     if not playerPed or not targetPed then return end
@@ -634,17 +588,37 @@ RegisterNetEvent('rsg-horses:server:AcceptTrade', function(fromId)
 end)
 
 -----------------------------------
--- generate horseid
+-- move horse between stables
 -----------------------------------
 RegisterServerEvent('rsg-horses:server:MoveHorse', function(horseId, newStableId)
-    if not Config.EnableMoveHorse then return end
     local src = source
     local Player = RSGCore.Functions.GetPlayer(src)
     if not Player then return end
 
+    if SharedStableEnabled() then
+        TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_error_invalid_stable'), type = 'error', duration = 5000 })
+        return
+    end
+
     local citizenid = Player.PlayerData.citizenid
 
+    -- verify player is near a stable
+    local ped = GetPlayerPed(src)
+    local coords = GetEntityCoords(ped)
+    local nearStable = false
+    for _, stable in pairs(Config.StableSettings) do
+        if #(coords - stable.coords) < 10.0 then
+            nearStable = true
+            break
+        end
+    end
+    if not nearStable then
+        TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_error_not_at_stable'), type = 'error', duration = 5000 })
+        return
+    end
+
     local horse = MySQL.query.await('SELECT * FROM player_horses WHERE id = ? AND citizenid = ?', {horseId, citizenid})
+    
     if not horse or not horse[1] then
         TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_error_not_own_horse'), type = 'error', duration = 5000 })
         return
@@ -652,7 +626,7 @@ RegisterServerEvent('rsg-horses:server:MoveHorse', function(horseId, newStableId
 
     local currentStable = nil
     local newStable = nil
-
+    
     for _, stableConfig in pairs(Config.StableSettings) do
         if stableConfig.stableid == horse[1].stable then
             currentStable = stableConfig
@@ -672,14 +646,14 @@ RegisterServerEvent('rsg-horses:server:MoveHorse', function(horseId, newStableId
         return
     end
 
-    local baseFee = Config.MoveHorseBasePrice
-    local feePerMeter = Config.MoveFeePerMeter
-    local distance = 0
-
-    if currentStable then
-        distance = #(currentStable.coords - newStable.coords)
+    if not currentStable then
+        TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_error_invalid_stable'), type = 'error', duration = 5000 })
+        return
     end
 
+    local baseFee = Config.MoveHorseBasePrice
+    local feePerMeter = Config.MoveFeePerMeter
+    local distance = #(currentStable.coords - newStable.coords)
     local moveFee = math.ceil(baseFee + (distance * feePerMeter))
 
     if not Player.Functions.RemoveMoney('cash', moveFee) then
@@ -702,6 +676,9 @@ RegisterServerEvent('rsg-horses:server:MoveHorse', function(horseId, newStableId
     })
 end)
 
+-----------------------------------
+-- generate horseid
+-----------------------------------
 function GenerateHorseid()
     local UniqueFound = false
     local horseid = nil
@@ -736,7 +713,12 @@ RegisterServerEvent('rsg-horses:server:sethorseAttributes', function(dirt)
     local src = source
     local Player = RSGCore.Functions.GetPlayer(src)
     if not Player then return end
+
+    dirt = tonumber(dirt)
+    if not dirt or dirt < 0 or dirt > 100 then return end
+
     local activehorse = MySQL.scalar.await('SELECT id FROM player_horses WHERE citizenid = ? AND active = ?', {Player.PlayerData.citizenid, true})
+    if not activehorse then return end
     MySQL.update('UPDATE player_horses SET dirt = ? WHERE id = ? AND citizenid = ?', { dirt, activehorse, Player.PlayerData.citizenid })
 end)
 
@@ -744,6 +726,7 @@ RegisterServerEvent('rsg-horses:server:SetPlayerBucket', function(random, ped)
     local src = source
     local Player = RSGCore.Functions.GetPlayer(src)
     if not Player then return end
+    if not ped or type(ped) ~= "number" or ped <= 0 then return end
     if random then
         local BucketID = RSGCore.Shared.RandomInt(1000, 9999)
         SetRoutingBucketPopulationEnabled(BucketID, false)
@@ -758,10 +741,55 @@ end)
 ---------------------------------
 -- horse inventory
 ---------------------------------
-RegisterNetEvent('rsg-horses:server:openhorseinventory', function(horsestash, invWeight, invSlots)
+RegisterNetEvent('rsg-horses:server:openhorseinventory', function(horseid)
     local src = source
     local Player = RSGCore.Functions.GetPlayer(src)
     if not Player then return end
+
+    -- verify ownership
+    local horse = MySQL.query.await('SELECT * FROM player_horses WHERE horseid = ? AND citizenid = ?', {horseid, Player.PlayerData.citizenid})
+    if not horse[1] then
+        TriggerClientEvent('ox_lib:notify', src, {title = locale('sv_error_not_own_horse'), type = 'error', duration = 5000 })
+        return
+    end
+
+    local horsestash = horse[1].name .. ' ' .. horse[1].horseid
+    local horsexp = horse[1].horsexp
+
+    -- calculate inventory capacity based on xp (server-authoritative)
+    local invWeight, invSlots
+    if horsexp <= 99 then
+        invWeight = Config.Level1InvWeight
+        invSlots = Config.Level1InvSlots
+    elseif horsexp <= 199 then
+        invWeight = Config.Level2InvWeight
+        invSlots = Config.Level2InvSlots
+    elseif horsexp <= 299 then
+        invWeight = Config.Level3InvWeight
+        invSlots = Config.Level3InvSlots
+    elseif horsexp <= 399 then
+        invWeight = Config.Level4InvWeight
+        invSlots = Config.Level4InvSlots
+    elseif horsexp <= 499 then
+        invWeight = Config.Level5InvWeight
+        invSlots = Config.Level5InvSlots
+    elseif horsexp <= 999 then
+        invWeight = Config.Level6InvWeight
+        invSlots = Config.Level6InvSlots
+    elseif horsexp <= 1999 then
+        invWeight = Config.Level7InvWeight
+        invSlots = Config.Level7InvSlots
+    elseif horsexp <= 2999 then
+        invWeight = Config.Level8InvWeight
+        invSlots = Config.Level8InvSlots
+    elseif horsexp <= 3999 then
+        invWeight = Config.Level9InvWeight
+        invSlots = Config.Level9InvSlots
+    else
+        invWeight = Config.Level10InvWeight
+        invSlots = Config.Level10InvSlots
+    end
+
     local data = { label = locale('sv_horse_inventory'), maxweight = invWeight, slots = invSlots }
     exports['rsg-inventory']:OpenInventory(src, horsestash, data)
 end)
@@ -786,6 +814,20 @@ RegisterNetEvent('rsg-horses:server:openShop', function()
     local src = source
     local Player = RSGCore.Functions.GetPlayer(src)
     if not Player then return end
+
+    -- verify player is near a stable
+    local ped = GetPlayerPed(src)
+    local coords = GetEntityCoords(ped)
+    local nearStable = false
+    for _, stable in pairs(Config.StableSettings) do
+        if #(coords - stable.coords) < 10.0 then
+            nearStable = true
+            break
+        end
+    end
+
+    if not nearStable then return end
+
     exports['rsg-inventory']:OpenShop(src, 'horse')
 end)
 
@@ -796,7 +838,7 @@ UpkeepInterval = function()
 
     local result = MySQL.query.await('SELECT * FROM player_horses')
 
-    if not result then goto continue end
+    if not result then return end
 
     for i = 1, #result do
         local id = result[i].id
@@ -838,7 +880,7 @@ UpkeepInterval = function()
             goto continue
         end
 
-        if Config.HorseDieAge and daysPassed >= Config.HorseDieAge then
+        if daysPassed >= Config.HorseDieAge then
             
             -- Get horseid for inventory cleanup
             local horsedata = MySQL.query.await('SELECT horseid FROM player_horses WHERE id = ?', {id})
@@ -873,10 +915,9 @@ UpkeepInterval = function()
             goto continue
         end
 
+        ::continue::
     end
 
-    ::continue::
-    
     if Config.EnableServerNotify then
         print(locale('sv_print'))
     end

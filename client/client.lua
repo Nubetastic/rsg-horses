@@ -54,48 +54,6 @@ local function GetLevelProgress(xp)
     end
     return 10, 100
 end
-
-local function GetHorsePriceByModel(model)
-    if Config.Debug then print("^3[PRICE LOOKUP] Starting lookup for model: ^7" .. tostring(model)) end
-    
-    if not model then 
-        if Config.Debug then print("^1[PRICE LOOKUP] Model is nil") end
-        return 0 
-    end
-    if not HorseBreed then 
-        if Config.Debug then print("^1[PRICE LOOKUP] HorseBreed is nil") end
-        return 0 
-    end
-    
-    if Config.Debug then print("^3[PRICE LOOKUP] HorseBreed loaded: ^7" .. type(HorseBreed)) end
-    
-    for breedName, breedData in pairs(HorseBreed) do
-        if Config.Debug then print("^3[PRICE LOOKUP] Checking breed: ^7" .. breedName .. " | Models: " .. tostring(breedData.models ~= nil) .. " | Price: " .. tostring(breedData.price)) end
-        
-        if breedData.models and type(breedData.models) == "table" then
-            for _, modelData in ipairs(breedData.models) do
-                if Config.Debug then print("^3[PRICE LOOKUP]   Model array: ^7[" .. tostring(modelData[1]) .. ", " .. tostring(modelData[2]) .. "]") end
-                
-                if modelData[2] == model then
-                    if Config.Debug then print("^2[PRICE LOOKUP] *** MATCH FOUND ***") end
-                    if Config.Debug then print("^2[PRICE LOOKUP] Breed: ^7" .. breedName) end
-                    if Config.Debug then print("^2[PRICE LOOKUP] Model entry: ^7[" .. modelData[1] .. ", " .. modelData[2] .. "]") end
-                    if Config.Debug then print("^2[PRICE LOOKUP] Price: ^7" .. tostring(breedData.price)) end
-                    return breedData.price or 0
-                end
-            end
-        end
-    end
-    
-    if Config.Debug then print("^1[PRICE LOOKUP] NO MATCH FOUND") end
-    return 0
-end
-
-local function CalculateSellPrice(basePrice, horseLevel)
-    if not basePrice or basePrice == 0 then return 0 end
-    if not horseLevel then horseLevel = 1 end
-    return math.floor(basePrice * (0.25 + (0.10 * (horseLevel - 1))))
-end
 -------------------
 local lanternequiped = false
 local lanternUsed = false
@@ -104,15 +62,15 @@ local holsterUsed = false
 -------------------
 local HorsePrompts
 local HorseLayPrompts
-local SaddleBagPrompt
+---local SaddleBagPrompt
 local HorsePLayPrompts
 -------------------
 local closestStable = nil
 local Customize = false
 local RotatePrompt
 local CustomizePrompt = GetRandomIntInRange(0, 0xffffff)
-local Components = lib.load('shared.horse_comp') or _G.Components
-local HorseBreed = lib.load('shared.horse_breed') or _G.HorseBreed
+local Components = lib.load('shared.horse_comp')
+local HorseSettingsCache = lib.load('shared.horse_settings')
 local CurrentPrice = 0
 local initialHorseComps = {}
 lib.locale()
@@ -155,18 +113,58 @@ function SetupHorsePrompts()
         PromptRegisterEnd(HorsePLayPrompts)
     end
 
-    local str2 = locale('cl_action_saddlebag')
-    SaddleBagPrompt = PromptRegisterBegin()
-    PromptSetControlAction(SaddleBagPrompt, Config.Prompt.HorseSaddleBag)
-    str2 = CreateVarString(10, 'LITERAL_STRING', str2)
-    PromptSetText(SaddleBagPrompt, str2)
-    PromptSetEnabled(SaddleBagPrompt, 1)
-    PromptSetVisible(SaddleBagPrompt, 1)
-    PromptSetStandardMode(SaddleBagPrompt,1)
-    PromptSetGroup(SaddleBagPrompt, HorsePrompts)
-    Citizen.InvokeNative(0xC5F428EE08FA7F2C, SaddleBagPrompt,true)
-    PromptRegisterEnd(SaddleBagPrompt)
+end
 
+------------------------------------
+-- horse target (ox_target)
+------------------------------------
+local function SetupHorseTarget()
+    if not Config.EnableTarget then return end
+    pcall(function()
+        exports.ox_target:addLocalEntity(horsePed, {
+            {
+                name = 'horse_lantern',
+                icon = 'fa-solid fa-lightbulb',
+                label = locale('cl_action_lantern'),
+                onSelect = function()
+                    local hasItem = RSGCore.Functions.HasItem('horse_lantern', 1)
+                    if not hasItem then
+                        lib.notify({ title = locale('cl_error_no_lantern'), type = 'error', duration = 7000 })
+                        return
+                    end
+                    if lanternequiped == false then
+                        Citizen.InvokeNative(0xD3A7B003ED343FD9, horsePed, 0x635E387C, true, true, true)
+                        lanternequiped = true
+                        lanternUsed = true
+                        lib.notify({ title = locale('cl_primary_lantern_equiped'), type = 'info', duration = 7000 })
+                    else
+                        Citizen.InvokeNative(0xD710A5007C2AC539, horsePed, 0x1530BE1C, 0)
+                        Citizen.InvokeNative(0xCC8CA3E88256E58F, horsePed, 0, 1, 1, 1, 0)
+                        lanternequiped = false
+                        lanternUsed = true
+                        lib.notify({ title = locale('cl_primary_lantern_removed'), type = 'info', duration = 7000 })
+                    end
+                end,
+                distance = 2.5,
+            },
+            {
+                name     = 'horse_inventory',
+                icon     = 'fa-solid fa-box-open',
+                label    = locale('cl_action_saddlebag'),
+                distance = 2.5,
+                onSelect = function()
+                    TriggerEvent('rsg-horses:client:inventoryHorse')
+                end,
+            },
+        })
+    end)
+end
+
+local function RemoveHorseTarget()
+    if not Config.EnableTarget then return end
+    pcall(function()
+        exports.ox_target:removeEntity(horsePed, 'horse_lantern')
+    end)
 end
 
 ------------------------------------
@@ -201,37 +199,20 @@ end
 -- flee horse
 ------------------------------------
 local function Flee()
-    if horsePed == 0 or not DoesEntityExist(horsePed) then return end
     TaskAnimalFlee(horsePed, cache.ped, -1)
     Wait(10000)
     if Config.StoreFleedHorse then
         SetClosestStableLocation()
         TriggerServerEvent('rsg-horses:server:fleeStoreHorse', closestStable)
     end
+    RemoveHorseTarget()
     SetEntityAsMissionEntity(horsePed, true, true)
     DeleteEntity(horsePed)
     SetEntityAsNoLongerNeeded(horsePed)
     horsePed = 0
-    TriggerEvent('rsg-horses:client:tracker:clearHorse')
     HorseCalled = false
     if horseBlip then RemoveBlip(horseBlip) horseBlip = nil end
 end
-
-RegisterNetEvent('rsg-horses:client:tracker:requestFlee', function()
-    Flee()
-end)
-
-RegisterNetEvent('rsg-horses:client:despawnHorse', function()
-    if horsePed ~= 0 and DoesEntityExist(horsePed) then
-        SetEntityAsMissionEntity(horsePed, true, true)
-        DeleteEntity(horsePed)
-        SetEntityAsNoLongerNeeded(horsePed)
-        horsePed = 0
-        TriggerEvent('rsg-horses:client:tracker:clearHorse')
-        HorseCalled = false
-        if horseBlip then RemoveBlip(horseBlip) horseBlip = nil end
-    end
-end)
 
 ------------------------------------
 -- exports
@@ -339,19 +320,14 @@ RegisterNetEvent('rsg-horses:client:custShop', function(data)
     end
     local horsesdata = data.player
     local horseped = horsesdata.horse
-    local targetStableId = data.stableid
-    if not targetStableId or targetStableId == 'allStables' then
-        lib.notify({ title = locale('cl_error_title'), type = 'error', duration = 7000 })
-        return
-    end
+    local stableid = data.stableid or horsesdata.stable
     for k, v in pairs(Config.StableSettings) do
-        if targetStableId == v.stableid then
+        if stableid == v.stableid then
             DoScreenFadeOut(0)
             repeat Wait(0) until IsScreenFadedOut()
             local ped = SpawnHorses(horseped, v.horsecustom, v.horsecustom.w)
             DeleteEntity(horsePed)
             horsePed = 0
-            TriggerEvent('rsg-horses:client:tracker:clearHorse')
             HorseCalled = false
             TriggerServerEvent('rsg-horses:server:SetPlayerBucket', true, ped)
             createCamera(ped, horsesdata)
@@ -386,122 +362,65 @@ end, false)
 -- stables
 ------------------------------------
 RegisterNetEvent('rsg-horses:client:stablemenu', function(stableid)
-    local options = {}
-    if Config.EnableMoveHorse then
-        options[#options + 1] = {
+    local options = {
+        {
+            title = locale('cl_menu_horse_view_horses'),
+            description = locale('cl_menu_horse_view_horses_sub'),
+            icon = 'fa-solid fa-eye',
+            event = 'rsg-horses:client:menu',
+            args = { stableid = stableid },
+            arrow = true
+        },
+        {
+            title = locale('cl_menu_horse_sell'),
+            description = locale('cl_menu_horse_sell_sub'),
+            icon = 'fa-solid fa-coins',
+            event = 'rsg-horses:client:MenuDel',
+            args = { stableid = stableid },
+            arrow = true
+        },
+        {
+            title = locale('cl_menu_horse_trade'),
+            description = locale('cl_menu_horse_trade_sub'),
+            icon = 'fa-solid fa-handshake',
+            event = 'rsg-horses:client:tradehorse',
+            arrow = true
+        },
+        {
+            title = locale('cl_menu_horse_shop'),
+            description = locale('cl_menu_horse_shop_sub'),
+            event = 'rsg-horses:client:OpenHorseShop',
+            icon = 'fa-solid fa-shop',
+            arrow = true
+        },
+        {
+            title = locale('cl_menu_horse_store_horse'),
+            description = locale('cl_menu_horse_store_horse_sub'),
+            icon = 'fa-solid fa-warehouse',
+            event = 'rsg-horses:client:storehorse',
+            args = { stableid = stableid },
+            arrow = true
+        },
+    }
+
+    if not Config.SharedStable then
+        table.insert(options, 1, {
             title = locale('cl_menu_horse_move'),
             description = locale('cl_menu_horse_move_sub'),
             icon = 'fa-solid fa-horse',
             event = 'rsg-horses:client:movehorse',
             args = { stableid = stableid },
             arrow = true
-        }
+        })
     end
-    options[#options + 1] = {
-        title = locale('cl_menu_horse_view_horses'),
-        description = locale('cl_menu_horse_view_horses_sub'),
-        icon = 'fa-solid fa-eye',
-        event = 'rsg-horses:client:menu',
-        args = { stableid = stableid },
-        arrow = true
-    }
-    options[#options + 1] = {
-        title = locale('cl_menu_horse_trade'),
-        description = locale('cl_menu_horse_trade_sub'),
-        icon = 'fa-solid fa-handshake',
-        event = 'rsg-horses:client:tradehorse',
-        arrow = true
-    }
-    options[#options + 1] = {
-        title = locale('cl_menu_horse_shop'),
-        description = locale('cl_menu_horse_shop_sub'),
-        event = 'rsg-horses:client:OpenHorseShop',
-        icon = 'fa-solid fa-shop',
-        arrow = true
-    }
-    options[#options + 1] = {
-        title = locale('cl_menu_horse_store_horse'),
-        description = locale('cl_menu_horse_store_horse_sub'),
-        icon = 'fa-solid fa-warehouse',
-        event = 'rsg-horses:client:storehorse',
-        args = { stableid = stableid },
-        arrow = true
-    }
+
     lib.registerContext({
         id = 'stable_menu',
         title = locale('cl_menu_stable_menu'),
         options = options
     })
-    lib.showContext('stable_menu')
+    lib.showContext("stable_menu")
 end)
-
-RegisterNetEvent('rsg-horses:client:movehorse', function(data)
-    if not Config.EnableMoveHorse then return end
-    local horses = lib.callback.await('rsg-horses:server:GetHorse', false, data.stableid)
-    if #horses <= 0 then
-        lib.notify({ title = locale('cl_error_no_horses'), type = 'error', duration = 7000 })
-        return
-    end
-    local options = {}
-    for k, v in pairs(horses) do
-        options[#options + 1] = {
-            title = v.name,
-            description = string.format(locale('cl_horse_stats_desc'), CalculateHorseLevel(v.horsexp), v.gender, v.horsexp, v.active == 1 and locale('cl_status_active') or locale('cl_status_inactive'), 100 - (v.dirt or 0)),
-            icon = 'fa-solid fa-horse',
-            arrow = true,
-            onSelect = function()
-                SelectDestinationStable(v.id, data.stableid)
-            end
-        }
-    end
-    lib.registerContext({
-        id = 'move_horse_menu',
-        title = locale('cl_horse_move_select'),
-        position = 'top-right',
-        menu = 'stable_menu',
-        onBack = function() end,
-        options = options
-    })
-    lib.showContext('move_horse_menu')
-end)
-
-function SelectDestinationStable(horseId, currentStableId)
-    local options = {}
-    local currentStable = nil
-    for _, stableConfig in pairs(Config.StableSettings) do
-        if stableConfig.stableid == currentStableId then
-            currentStable = stableConfig
-            break
-        end
-    end
-    for _, stableConfig in pairs(Config.StableSettings) do
-        if stableConfig.stableid ~= currentStableId then
-            local baseFee = Config.MoveHorseBasePrice
-            local feePerMeter = Config.MoveFeePerMeter
-            local distance = #(currentStable.coords - stableConfig.coords)
-            local cost = math.ceil(baseFee + (distance * feePerMeter))
-            options[#options + 1] = {
-                title = stableConfig.stableid:upper(),
-                description = string.format(locale('cl_move_horse_cost'), cost),
-                icon = 'fa-solid fa-money-bill',
-                arrow = false,
-                onSelect = function()
-                    TriggerServerEvent('rsg-horses:server:MoveHorse', horseId, stableConfig.stableid)
-                    lib.showContext('stable_menu')
-                end
-            }
-        end
-    end
-    lib.registerContext({
-        id = 'move_destination_menu',
-        title = locale('cl_horse_move_select_stable'),
-        position = 'top-right',
-        menu = 'move_horse_menu',
-        onBack = function() end,
-        options = options
-    })
-    lib.showContext('move_destination_menu')
-end
 
 ------------------------------------
 -- trade horse
@@ -540,17 +459,11 @@ local function BondingLevels()
 
     if currentBonding >= maxBonding then
         bondingLevel = 4
-    end
-
-    if currentBonding >= thirdBonding and thirdBonding * 2 > currentBonding then
-        bondingLevel = 2
-    end
-
-    if currentBonding >= thirdBonding * 2 and maxBonding > currentBonding then
+    elseif currentBonding >= thirdBonding * 2 then
         bondingLevel = 3
-    end
-
-    if thirdBonding > currentBonding then
+    elseif currentBonding >= thirdBonding then
+        bondingLevel = 2
+    else
         bondingLevel = 1
     end
 end
@@ -598,8 +511,7 @@ local function SpawnHorse()
                 local heading = 300
 
                 local prevhorse = horsePed
-                if prevhorse ~= 0 and DoesEntityExist(prevhorse) then
-                    TriggerEvent('rsg-horses:client:tracker:clearHorse')
+                if prevhorse then
                     getControlOfEntity(prevhorse)
                     if horseBlip then RemoveBlip(horseBlip) horseBlip = nil end
 
@@ -607,12 +519,7 @@ local function SpawnHorse()
                     DeleteEntity(prevhorse)
                     DeletePed(prevhorse)
                     SetEntityAsNoLongerNeeded(prevhorse)
-                    local timeout = GetGameTimer() + 5000
-                    while DoesEntityExist(prevhorse) and GetGameTimer() < timeout do
-                        Wait(50)
-                        DeleteEntity(prevhorse)
-                    end
-                    horsePed = 0
+                    prevhorse = 0
                 end
 
                 if onRoad then
@@ -695,6 +602,9 @@ local function SpawnHorse()
                     horseComps[data.horseid] = {}
                 end
 
+                local horse_id = data.id
+                HorseId = horse_id
+
                 for category, value in pairs(horseComps[data.horseid]) do
                     local hash = getComponentHash(category, value)
                     if hash ~= 0 then
@@ -713,61 +623,14 @@ local function SpawnHorse()
                 horsegender = data.gender
 
                 -- set horse health/stamina/ability/speed/acceleration (increased by horse training)
-                local hValue = 0
-                local overPower = false
-
-                if horsexp <= 99 then
-                    hValue = Config.Level1
-                    horseLevel = 1
-                    goto continue
-                end
-                if horsexp >= 100 and horsexp <= 199 then
-                    hValue = Config.Level2
-                    horseLevel = 2
-                    goto continue
-                end
-                if horsexp >= 200 and horsexp <= 299 then
-                    hValue = Config.Level3
-                    horseLevel = 3
-                    goto continue
-                end
-                if horsexp >= 300 and horsexp <= 399 then
-                    hValue = Config.Level4
-                    horseLevel = 4
-                    goto continue
-                end
-                if horsexp >= 400 and horsexp <= 499 then
-                    hValue = Config.Level5
-                    horseLevel = 5
-                    goto continue
-                end
-                if horsexp >= 500 and horsexp <= 999 then
-                    hValue = Config.Level6
-                    horseLevel = 6
-                    goto continue
-                end
-                if horsexp >= 1000 and horsexp <= 1999 then
-                    hValue = Config.Level7
-                    horseLevel = 7
-                    goto continue
-                end
-                if horsexp >= 2000 and horsexp <= 2999 then
-                    hValue = Config.Level8
-                    horseLevel = 8
-                    goto continue
-                end
-                if horsexp >= 3000 and horsexp <= 3999 then
-                    hValue = Config.Level9
-                    horseLevel = 9
-                    goto continue
-                end
-                if horsexp >= 4000 then
-                    hValue = Config.Level10
-                    horseLevel = 10
-                    overPower = true
-                end
-
-                ::continue::
+                horseLevel = CalculateHorseLevel(horsexp)
+                local levelConfigs = {
+                    Config.Level1, Config.Level2, Config.Level3, Config.Level4,
+                    Config.Level5, Config.Level6, Config.Level7, Config.Level8,
+                    Config.Level9, Config.Level10
+                }
+                local hValue = levelConfigs[horseLevel] or Config.Level1
+                local overPower = horseLevel >= 10
 
                 SetAttributePoints(horsePed, 0, hValue) -- HEALTH (0-2000)
                 SetAttributePoints(horsePed, 1, hValue) -- STAMINA (0-2000)
@@ -830,7 +693,7 @@ local function SpawnHorse()
                 Citizen.InvokeNative(0xA3DB37EDF9A74635, player, horsePed, 49, 1, true) -- HORSE_BRUSH
                 Citizen.InvokeNative(0xA3DB37EDF9A74635, player, horsePed, 50, 1, true) -- HORSE_FEED
                 Citizen.InvokeNative(0xA3DB37EDF9A74635, player, horsePed, 28, 1, true) -- HORSE_ITEMS
-
+				
                 HorsePrompts = PromptGetGroupIdForTargetEntity(horsePed)
 
                 SetupHorsePrompts()
@@ -840,12 +703,12 @@ local function SpawnHorse()
                 Wait(5000)
 
                 horseSpawned = true
-                TriggerEvent('rsg-horses:client:tracker:setHorse', horsePed)
                 HorseCalled = true
 
                 if Config.Automount == true then
                     TaskMountAnimal(cache.ped, horsePed, 10000, -1, 1.0, 1, 0, 0)
                 end
+                SetupHorseTarget()
             end
         end
     end)
@@ -1049,10 +912,9 @@ AddEventHandler('onResourceStop', function(resource)
     DisableCamera()
     MenuData.CloseAll()
     if (horsePed ~= 0) then
+        RemoveHorseTarget()
         DeletePed(horsePed)
         SetEntityAsNoLongerNeeded(horsePed)
-        horsePed = 0
-        TriggerEvent('rsg-horses:client:tracker:clearHorse')
     end
 end)
 
@@ -1061,30 +923,30 @@ local HorseId = nil
 RegisterNetEvent('rsg-horses:client:SpawnHorse', function(data)
     HorseId = data.player.id
     if horsePed ~= 0 then
+        RemoveHorseTarget()
         DeletePed(horsePed)
         SetEntityAsNoLongerNeeded(horsePed)
         horsePed = 0
-        TriggerEvent('rsg-horses:client:tracker:clearHorse')
     end
     TriggerServerEvent("rsg-horses:server:SetHoresActive", data.player.id)
     lib.notify({ title = locale('cl_success_title'), description = locale('cl_success_horse_active'), type = 'success', duration = 7000 })
 end)
 
 AddEventHandler('rsg-horses:client:FleeHorse', function()
-    if horsePed ~= 0 and DoesEntityExist(horsePed) then
+    if horsePed then
         getControlOfEntity(horsePed)
 
         if horseBlip then
             RemoveBlip(horseBlip)
         end
 
+        RemoveHorseTarget()
         SetEntityAsMissionEntity(horsePed, true, true)
         DeleteEntity(horsePed)
         DeletePed(horsePed)
         SetEntityAsNoLongerNeeded(horsePed)
 
         horsePed = 0
-        TriggerEvent('rsg-horses:client:tracker:clearHorse')
         HorseCalled = false
     end
 end)
@@ -1115,7 +977,7 @@ end)
 ------------------------------------
 -- menus options
 ------------------------------------
-local function HorseOptions(data, atStableId)
+local function HorseOptions(data, stableid)
     local menu = {
         {
             title = locale('cl_menu_horse_ride'),
@@ -1130,37 +992,8 @@ local function HorseOptions(data, atStableId)
             description = locale('cl_menu_horse_customize_sub'),
             icon = 'fa-solid fa-screwdriver-wrench',
             event = 'rsg-horses:client:custShop',
-            args = { player = data, stableid = atStableId },
+            args = { player = data, stableid = stableid },
             arrow = true
-        },
-        {
-            title = locale('cl_menu_horse_sell'),
-            description = locale('cl_menu_horse_sell_sub'),
-            icon = 'fa-solid fa-coins',
-            arrow = true,
-            onSelect = function()
-                local basePrice = GetHorsePriceByModel(data.horse) or 0
-                local horseLevel = CalculateHorseLevel(data.horsexp)
-                local sellPrice = CalculateSellPrice(basePrice, horseLevel)
-                
-                if Config.Debug then
-                    print("^3[DEBUG] Horse: ^7" .. tostring(data.horse))
-                    print("^3[DEBUG] Base Price: ^7" .. tostring(basePrice))
-                    print("^3[DEBUG] Level: ^7" .. tostring(horseLevel))
-                    print("^3[DEBUG] Sell Price: ^7" .. tostring(sellPrice))
-                end
-                
-                local alert = lib.alertDialog({
-                    header = locale('cl_sell_horse_header'),
-                    content = string.format(locale('cl_sell_horse_confirm'), data.name, sellPrice),
-                    centered = true,
-                    cancel = true
-                })
-                
-                if alert == 'confirm' then
-                    TriggerServerEvent('rsg-horses:server:deletehorse', { horseid = data.id })
-                end
-            end
         },
     }
 
@@ -1220,8 +1053,7 @@ RegisterNetEvent('rsg-horses:client:menu', function(data)
     lib.showContext('horses_view')
 end)
 
---[[
--- sell horse menu (DEPRECATED - moved to HorseOptions)
+-- sell horse menu
 RegisterNetEvent('rsg-horses:client:MenuDel', function(data)
     local horses = lib.callback.await('rsg-horses:server:GetHorse', false, data.stableid)
 
@@ -1232,8 +1064,14 @@ RegisterNetEvent('rsg-horses:client:MenuDel', function(data)
 
     local options = {}
     for k, v in pairs(horses) do
-        local basePrice = GetHorsePriceByModel(v.horse) or 0
-        local sellPrice = basePrice * 0.5
+        -- Calculate sell price (50% of original)
+        local sellPrice = 0
+        for _, horseSetting in pairs(HorseSettingsCache) do
+            if horseSetting.horsemodel == v.horse then
+                sellPrice = horseSetting.horseprice * 0.5
+                break
+            end
+        end
         
         options[#options + 1] = {
             title = v.name,
@@ -1255,16 +1093,99 @@ RegisterNetEvent('rsg-horses:client:MenuDel', function(data)
         }
     end
     lib.registerContext({
-        id = 'sellhorse_menu',
+        id = 'sellhorse_menu',     -- Corrected the context ID here
         title = locale('cl_menu_sell_horse_menu'),
         position = 'top-right',
         menu = 'stable_menu',
         onBack = function() end,
         options = options
     })
-    lib.showContext('sellhorse_menu')
+    lib.showContext('sellhorse_menu')     -- Use the correct context ID here
 end)
-]]
+
+------------------------------------
+-- move horse menu
+------------------------------------
+RegisterNetEvent('rsg-horses:client:movehorse', function(data)
+    if Config.SharedStable then
+        return
+    end
+
+    local horses = lib.callback.await('rsg-horses:server:GetHorse', false, data.stableid)
+
+    if #horses <= 0 then
+        lib.notify({ title = locale('cl_error_no_horses'), type = 'error', duration = 7000 })
+        return
+    end
+
+    local options = {}
+    for k, v in pairs(horses) do
+        options[#options + 1] = {
+            title = v.name,
+            description = string.format(locale('cl_horse_stats_desc'), CalculateHorseLevel(v.horsexp), v.gender, v.horsexp, v.active == 1 and locale('cl_status_active') or locale('cl_status_inactive'), 100 - (v.dirt or 0)),
+            icon = 'fa-solid fa-horse',
+            arrow = true,
+            onSelect = function()
+                SelectDestinationStable(v.id, data.stableid)
+            end
+        }
+    end
+
+    lib.registerContext({
+        id = 'move_horse_menu',
+        title = locale('cl_horse_move_select'),
+        position = 'top-right',
+        menu = 'stable_menu',
+        onBack = function() end,
+        options = options
+    })
+    lib.showContext('move_horse_menu')
+end)
+
+------------------------------------
+-- move horse destination
+------------------------------------
+function SelectDestinationStable(horseId, currentStableId)
+    local options = {}
+    local currentStable = nil
+    
+    -- Find current stable coordinates
+    for _, stableConfig in pairs(Config.StableSettings) do
+        if stableConfig.stableid == currentStableId then
+            currentStable = stableConfig
+            break
+        end
+    end
+    
+    for _, stableConfig in pairs(Config.StableSettings) do
+        if stableConfig.stableid ~= currentStableId then
+            local baseFee = Config.MoveHorseBasePrice
+            local feePerMeter = Config.MoveFeePerMeter
+            local distance = #(currentStable.coords - stableConfig.coords)
+            local cost = math.ceil(baseFee + (distance * feePerMeter))
+            options[#options + 1] = {
+                title = stableConfig.stableid:upper(),
+                description = string.format(locale('cl_move_horse_cost'), cost),
+                icon = 'fa-solid fa-money-bill',
+                arrow = false,
+                onSelect = function()
+                    TriggerServerEvent('rsg-horses:server:MoveHorse', horseId, stableConfig.stableid)
+                    lib.showContext('stable_menu')
+                end
+            }
+        end
+    end
+
+    lib.registerContext({
+        id = 'move_destination_menu',
+        title = locale('cl_horse_move_select_stable'),
+        position = 'top-right',
+        menu = 'move_horse_menu',
+        onBack = function() end,
+        options = options
+    })
+    lib.showContext('move_destination_menu')
+end
 
 ------------------------------------
 -- horse death detection
@@ -1298,13 +1219,13 @@ CreateThread(function()
                             lib.notify({ title = locale('cl_error_horse_died'), type = 'error', duration = 7000 })
                             TriggerServerEvent('rsg-horses:server:HorseDied', data.horseid, data.name)
                             
-                            -- Clean up client-side
+                            --                             Clean up client-side
                             if horseBlip then RemoveBlip(horseBlip) horseBlip = nil end
+                            RemoveHorseTarget()
                             SetEntityAsMissionEntity(horsePed, true, true)
                             DeleteEntity(horsePed)
                             SetEntityAsNoLongerNeeded(horsePed)
                             horsePed = 0
-                            TriggerEvent('rsg-horses:client:tracker:clearHorse')
                             HorseCalled = false
                             horseSpawned = false
                         end
@@ -1344,19 +1265,15 @@ CreateThread(function()
             for i = 0, size - 1 do
                 local eventAtIndex = GetEventAtIndex(0, i)
                 if eventAtIndex == `EVENT_PLAYER_PROMPT_TRIGGERED` then
-                    local eventDataSize = 10
-                    local eventDataStruct = DataView.ArrayBuffer(8*eventDataSize) -- buffer must be 8*eventDataSize or bigger
-                    for a = 0, eventDataSize -1 do
+                    local eventDataStruct = DataView.ArrayBuffer(80)
+                    for a = 0, 9 do
                       eventDataStruct:SetInt32(8*a ,0)
                     end
-                    local is_data_exists = Citizen.InvokeNative(0x57EC5FA4D4D6AFCA, 0, i, eventDataStruct:Buffer(), eventDataSize)
+                    local is_data_exists = Citizen.InvokeNative(0x57EC5FA4D4D6AFCA, 0, i, eventDataStruct:Buffer(), 10)
 
                     if is_data_exists then
-
-                        if eventDataStruct:GetInt32(0) == 33 then
-                            if horsePed == eventDataStruct:GetInt32(16) then
-                                Flee()
-                            end
+                        if eventDataStruct:GetInt32(0) == 33 and horsePed == eventDataStruct:GetInt32(16) then
+                            Flee()
                         end
                     end
                 end
@@ -1392,7 +1309,7 @@ end
 Citizen.CreateThread(function()
     while true do
         Citizen.Wait(1)
-        if horsePed ~= nil then
+        if horsePed ~= 0 then
             if Citizen.InvokeNative(0xC92AC953F0A982AE, HorseLayPrompts) then
                 if horsexp >= Config.TrickXp.Lay then
                     HorseActions(horsePed, 'amb_creature_mammal@world_horse_resting@stand_enter', 'base')
@@ -1403,9 +1320,6 @@ Citizen.CreateThread(function()
                     HorseActions(horsePed, 'amb_creature_mammal@world_horse_wallow_shake@idle', 'idle_a')
                 end
             end
-            if Citizen.InvokeNative(0xC92AC953F0A982AE, SaddleBagPrompt) then
-                TriggerEvent('rsg-horses:client:inventoryHorse')
-            end
         end
     end
 end)
@@ -1414,70 +1328,22 @@ end)
 -- horse inventory
 ------------------------------------
 RegisterNetEvent('rsg-horses:client:inventoryHorse', function()
+    local pcoords = GetEntityCoords(cache.ped)
+    local hcoords = GetEntityCoords(horsePed)
+    local distance = #(pcoords - hcoords)
+
+    if distance > 2.0 then
+        lib.notify({ title = locale('cl_error_need_to_be_closer'), type = 'error', duration = 7000 })
+        return
+    end
+
     RSGCore.Functions.TriggerCallback('rsg-horses:server:GetActiveHorse', function(data)
         if horsePed == 0 then
             lib.notify({ title = locale('cl_error_no_horse_out'), type = 'error', duration = 7000 })
             return
         end
 
-        local horsestash = data.name .. ' ' .. data.horseid
-        local invWeight = 0
-        local invSlots = 0
-
-        if horsexp <= 99 then
-            invWeight = Config.Level1InvWeight
-            invSlots = Config.Level1InvSlots
-            goto continue
-        end
-        if horsexp >= 100 and horsexp <= 199 then
-            invWeight = Config.Level2InvWeight
-            invSlots = Config.Level2InvSlots
-            goto continue
-        end
-        if horsexp >= 200 and horsexp <= 299 then
-            invWeight = Config.Level3InvWeight
-            invSlots = Config.Level3InvSlots
-            goto continue
-        end
-        if horsexp >= 300 and horsexp <= 399 then
-            invWeight = Config.Level4InvWeight
-            invSlots = Config.Level4InvSlots
-            goto continue
-        end
-        if horsexp >= 400 and horsexp <= 499 then
-            invWeight = Config.Level5InvWeight
-            invSlots = Config.Level5InvSlots
-            goto continue
-        end
-        if horsexp >= 500 and horsexp <= 999 then
-            invWeight = Config.Level6InvWeight
-            invSlots = Config.Level6InvSlots
-            goto continue
-        end
-        if horsexp >= 1000 and horsexp <= 1999 then
-            invWeight = Config.Level7InvWeight
-            invSlots = Config.Level7InvSlots
-            goto continue
-        end
-        if horsexp >= 2000 and horsexp <= 2999 then
-            invWeight = Config.Level8InvWeight
-            invSlots = Config.Level8InvSlots
-            goto continue
-        end
-        if horsexp >= 3000 and horsexp <= 3999 then
-            invWeight = Config.Level9InvWeight
-            invSlots = Config.Level9InvSlots
-            goto continue
-        end
-        if horsexp > 4000 then
-            invWeight = Config.Level10InvWeight
-            invSlots = Config.Level10InvSlots
-        end
-
-        ::continue::
-
-        TriggerServerEvent('rsg-horses:server:openhorseinventory', horsestash, invWeight, invSlots)
-
+        TriggerServerEvent('rsg-horses:server:openhorseinventory', data.horseid)
     end)
 end)
 
@@ -1529,7 +1395,9 @@ AddEventHandler('rsg-horses:client:equipHorseLantern', function()
     end
 end)
 
+------------------------------------
 -- player feed horse
+------------------------------------
 RegisterNetEvent('rsg-horses:client:playerfeedhorse')
 AddEventHandler('rsg-horses:client:playerfeedhorse', function(itemName)
     local pcoords = GetEntityCoords(cache.ped)
@@ -1619,7 +1487,9 @@ AddEventHandler('rsg-horses:client:playerfeedhorse', function(itemName)
     end
 end)
 
+------------------------------------
 -- player brush horse
+------------------------------------
 RegisterNetEvent('rsg-horses:client:playerbrushhorse')
 AddEventHandler('rsg-horses:client:playerbrushhorse', function(itemName)
     local pcoords = GetEntityCoords(cache.ped)
@@ -1659,7 +1529,7 @@ local loadAnimDict = function(dict)
 end
 
 ------------------------------------
--- Player revive horse
+-- player revive horse
 ------------------------------------
 RegisterNetEvent("rsg-horses:client:revivehorse")
 AddEventHandler("rsg-horses:client:revivehorse", function(item, data)
@@ -1680,9 +1550,9 @@ AddEventHandler("rsg-horses:client:revivehorse", function(item, data)
 
         IsBeingRevived = true
         RequestControl(horsePed)
-        
-        local healAnim1Dict1 = "mech_revive@unapproved"
-        local healAnim1 = "revive"
+
+        local healAnim1Dict1 = "mech_skin@sample@base"
+        local healAnim1 = "sample_low"
 
         loadAnimDict(healAnim1Dict1)
 
@@ -1695,7 +1565,6 @@ AddEventHandler("rsg-horses:client:revivehorse", function(item, data)
         Wait(3000)
         ClearPedTasks(cache.ped)
         FreezeEntityPosition(cache.ped, false)
-        TriggerServerEvent('rsg-horses:server:revivehorse', item)
         IsBeingRevived = false
         SpawnHorse()
     else
@@ -1727,25 +1596,31 @@ Citizen.CreateThread(function()
             end
         end
         if horsePed ~= 0 and not horsebusy and dist > 12 and horseSpawned and candoaction then
-            if not Citizen.InvokeNative(0xAAB0FE202E9FC9F0, horsePed, -1) then -- IsMountSeatFree
-                return
+            if not Citizen.InvokeNative(0xAAB0FE202E9FC9F0, horsePed, -1) then
+                goto continue
             end
             Citizen.InvokeNative(0x524B54361229154F, horsePed, joaat('WORLD_ANIMAL_HORSE_RESTING_DOMESTIC'), -1, true, 0, GetEntityHeading(horsePed), false)                                                                                                           -- TaskStartScenarioInPlaceHash
             horsebusy = true
         end
+        ::continue::
         Wait(sleep)
     end
 end)
 
+------------------------------------
 -- save horse attributes 
+------------------------------------
+local lastDirtValue = -1
 Citizen.CreateThread(function()
     while true do
-        local sleep = 5000
-        local horsedirt = Citizen.InvokeNative(0x147149F2E909323C, horsePed, 16, Citizen.ResultAsInteger())
+        Wait(5000)
         if horsePed ~= 0 then
-            TriggerServerEvent('rsg-horses:server:sethorseAttributes', horsedirt)
+            local horsedirt = Citizen.InvokeNative(0x147149F2E909323C, horsePed, 16, Citizen.ResultAsInteger())
+            if horsedirt ~= lastDirtValue then
+                lastDirtValue = horsedirt
+                TriggerServerEvent('rsg-horses:server:sethorseAttributes', horsedirt)
+            end
         end
-        Wait(sleep)
     end
 end)
 
@@ -1785,4 +1660,27 @@ RegisterNetEvent('rsg-horses:client:gethorselocation', function()
         end
     end)
 
+end)
+
+------------------------------------
+-- Distance-check thread to block 0xFF8109D8 near your horse
+------------------------------------
+Citizen.CreateThread(function()
+    local disableDistance = 2.0
+    while true do
+        Wait(500) 
+        if horsePed ~= 0 and DoesEntityExist(horsePed) then
+            local playerCoords = GetEntityCoords(cache.ped)
+            local horseCoords = GetEntityCoords(horsePed)
+            
+            -- If player gets within the 2-meter threshold
+            if #(playerCoords - horseCoords) <= disableDistance then
+                -- Drop into high-frequency loop to seamlessly block the control action frame-by-frame
+                while horsePed ~= 0 and DoesEntityExist(horsePed) and #(GetEntityCoords(cache.ped) - GetEntityCoords(horsePed)) <= disableDistance do
+                    Wait(0)
+                    DisableControlAction(0, 0xFF8109D8, true)
+                end
+            end
+        end
+    end
 end)

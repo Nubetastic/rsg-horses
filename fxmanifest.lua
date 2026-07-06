@@ -3,37 +3,31 @@ rdr3_warning 'I acknowledge that this is a prerelease build of RedM, and I am aw
 game 'rdr3'
 
 description 'rsg-horses'
-version '2.2.1'
+version '2.2.5'
 
 shared_scripts {
     '@ox_lib/init.lua',
     'shared/config.lua',
     'shared/functions.lua',
-    'shared/horse_breed.lua',
-    'shared/horse_comp.lua',
-    'shared/horse_settings.lua',
 }
 
 client_scripts {
     'client/client.lua',
-    'client/horsetracker.lua',
     'client/npcs.lua',
     'client/horses.lua',
     'client/action.lua',
     'client/horseinfo.lua',
-    'client/dataview.lua',
+    'client/dataview.lua'
 }
 
 files {
     'shared/horse_settings.lua',
-    'shared/horse_breed.lua',
     'shared/horse_comp.lua',
     'locales/*.json',
 }
 
 server_scripts {
     '@oxmysql/lib/MySQL.lua',
-    'server/horsespawn.lua',
     'server/server.lua',
     'server/versionchecker.lua'
 }

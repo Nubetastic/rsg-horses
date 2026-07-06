@@ -1,26 +1,22 @@
 Config = {}
 lib.locale()
 
+-- debug
+Config.Debug = false
+
 Config = {
     horsesShopItems ={
-        { name = 'horse_brush',     price = string.format("%.2f", 5) },
-        { name = 'horse_lantern',   price = string.format("%.2f", 50) },
-        { name = 'sugarcube',       price = string.format("%.2f", 1) },
-        { name = 'horse_apple',     price = string.format("%.2f", .5) },
-        { name = 'horse_carrot',    price = string.format("%.2f", .6) },
-        { name = 'horse_stimulant', price = string.format("%.2f", 3) },
-        { name = 'horse_reviver',   price = string.format("%.2f", 5) },
-        { name = 'haysnack',        price = string.format("%.2f", 1.25) },
-        { name = 'horsemeal',       price = string.format("%.2f", 1.5) },
+        { name = 'horse_brush',     amount = 10, price = 5 },
+        { name = 'horse_lantern',   amount = 10, price = 10 },
+        { name = 'horse_carrot',    amount = 50, price = 1 },
+        { name = 'horse_apple',     amount = 50, price = 1 },
+        { name = 'horse_stimulant', amount = 25, price = 2 },
+        { name = 'horse_reviver',   amount = 25, price = 10 }
     },
     PersistStock = false, --should stock save in database and load it after restart, to 'remember' stock value before restart
 }
 
--- debug
-Config.Debug = false
 
--- horse inventory hotkey, please refer to '[framework]/rsg-core/shared/keybinds.lua' for complete list of hotkeys
-Config.HorseInvKey = 0x760A9C6F -- G
 
 Config.Prompt = {
     HorseDrink = 0xD8CF0C95,
@@ -29,6 +25,7 @@ Config.Prompt = {
     HorsePlay = 0x620A6C5E,
     HorseSaddleBag = 0xC7B5340A,
     HorseBrush = 0x63A38F2C,
+    HorseLantern = 0x63A38F2C,
     Rotate = { 0x7065027D, 0xB4E465B4 },
 }
 
@@ -73,20 +70,17 @@ Config.SpawnOnRoadOnly     = false -- always spawn on road
 Config.HorseInvWeight      = 16000 -- horse inventory weight
 Config.HorseInvSlots       = 25 -- horse inventory slots
 Config.CheckCycle          = 30 -- horse check system (mins) -- default 60
-Config.HorseDieAge         = false
 Config.StarterHorseDieAge  = 7 -- starter horse age in days till it dies (days)
 Config.HorseDieAge         = 365 -- horse age in days till it dies (days)
 Config.StoreFleedHorse     = false -- store horse if flee is used
 Config.EnableServerNotify  = false
 Config.KeyBind             = 'J'
 Config.AllowTwoPlayersRide = true -- if true two players can ride but may have some impact on other features
-Config.DeathGracePeriod    = 5 * 60 * 1000 -- grace period to let player attempt to revive the horse
+Config.DeathGracePeriod    = 60000 -- grace period to let player attempt to revive the horse
 Config.MoveHorseBasePrice  = 10
 Config.MoveFeePerMeter     = 0.01
 
-Config.playerStable = 'allStables'
-Config.EnableMoveHorse    = false
-Config.HorseUpdate = 1 * 60 * 60 * 1000 -- horse update interval in ms (1 hour)
+Config.SharedStable        = true -- all stabled horses are in the same stable.
 
 ---------------------------------
 -- horse inventory weight by level
@@ -133,9 +127,6 @@ Config.HorseFeed = {
     -- medicineHash is optional. If u do not set, the default value wil be: consumable_horse_stimulant
     ['horse_carrot']    = { health = 10,  stamina = 10,  ismedicine = false },
     ['horse_apple']     = { health = 15,  stamina = 15,  ismedicine = false },
-    ['sugarcube']       = { health = 25,  stamina = 25,  ismedicine = false },
-    ['haysnack']        = { health = 50,  stamina = 25,  ismedicine = false },
-    ['horsemeal']       = { health = 75,  stamina = 75,  ismedicine = false },
     ['horse_stimulant'] = { health = 100, stamina = 100, ismedicine = true, medicineHash = 'consumable_horse_stimulant' },
 }
 
@@ -145,8 +136,10 @@ Config.HorseFeed = {
 Config.ObjectAction = true
 
 Config.BoostAction = {
-    Health = math.random(3, 9),
-    Stamina = math.random(3, 9)
+    MinHealth = 3,
+    MaxHealth = 9,
+    MinStamina = 3,
+    MaxStamina = 9,
 }
 
 Config.ObjectActionList = {
@@ -178,15 +171,15 @@ Config.Blip = {
 ---------------------------------
 -- stable npc settings
 ---------------------------------
-Config.DistanceSpawn = 40.0
+Config.DistanceSpawn = 20.0
 Config.FadeIn = true
 
 ---------------------------------
 -- stable npcs
 ---------------------------------
-
 Config.StableSettings = {
-    --[[
+
+        --[[
     {   -- colter
         stableid = 'colter',
         coords = vector3(-1334.2, 2397.41, 307.21),
@@ -195,7 +188,7 @@ Config.StableSettings = {
         horsecustom = vec4(-1344.8345, 2392.2900, 306.7908, 153.3136),
         showblip = true
     },
-    --]]
+    ]]
     {   -- vanhorn
         stableid = 'vanhorn',
         coords = vector3(2968.86, 792.97, 51.4),
@@ -258,7 +251,7 @@ Config.StableSettings = {
         horsecustom = vec4(-5526.3452, -3030.7842, -2.0329, 105.3392),
         showblip = true
     },
-    --[[
+
     {   -- emerald ranch
         stableid = 'emeraldranch',
         coords = vector3(1393.46, 353.09, 87.63),
@@ -267,5 +260,5 @@ Config.StableSettings = {
         horsecustom = vec4(1396.73, 345.73, 87.58, 58.91),
         showblip = true
     },
-    --]]
+
 }
