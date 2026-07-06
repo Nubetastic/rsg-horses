@@ -206,7 +206,7 @@ local function Flee()
         TriggerServerEvent('rsg-horses:server:fleeStoreHorse', closestStable)
     end
     RemoveHorseTarget()
-    SetEntityAsMissionEntity(horsePed, true, true)
+    --SetEntityAsMissionEntity(horsePed, true, true)
     DeleteEntity(horsePed)
     SetEntityAsNoLongerNeeded(horsePed)
     horsePed = 0
@@ -515,7 +515,7 @@ local function SpawnHorse()
                     getControlOfEntity(prevhorse)
                     if horseBlip then RemoveBlip(horseBlip) horseBlip = nil end
 
-                    SetEntityAsMissionEntity(prevhorse, true, true)
+                   --SetEntityAsMissionEntity(prevhorse, true, true)
                     DeleteEntity(prevhorse)
                     DeletePed(prevhorse)
                     SetEntityAsNoLongerNeeded(prevhorse)
@@ -537,7 +537,7 @@ local function SpawnHorse()
                 while not DoesEntityExist(horsePed) do
                     Wait(10)
                 end
-
+                SetEntityAsNoLongerNeeded(horsePed)
                 getControlOfEntity(horsePed)
 
                 local horseFlags = {
@@ -589,7 +589,7 @@ local function SpawnHorse()
                 Citizen.InvokeNative(0xEB8886E1065654CD, horsePed, 10, "ALL", 0)
                 SetModelAsNoLongerNeeded(model)
                 SetEntityAsNoLongerNeeded(horsePed)
-                SetEntityAsMissionEntity(horsePed, true)
+               --SetEntityAsMissionEntity(horsePed, true)
                 SetEntityCanBeDamaged(horsePed, true)
                 SetPedNameDebug(horsePed, data.name)
                 SetPedPromptName(horsePed, data.name)
@@ -880,7 +880,7 @@ end
 
 function getControlOfEntity(entity)
     NetworkRequestControlOfEntity(entity)
-    SetEntityAsMissionEntity(entity, true, true)
+   --SetEntityAsMissionEntity(entity, true, true)
     local timeout = 2000
 
     while timeout > 0 and NetworkHasControlOfEntity(entity) == nil do
@@ -941,7 +941,7 @@ AddEventHandler('rsg-horses:client:FleeHorse', function()
         end
 
         RemoveHorseTarget()
-        SetEntityAsMissionEntity(horsePed, true, true)
+       --SetEntityAsMissionEntity(horsePed, true, true)
         DeleteEntity(horsePed)
         DeletePed(horsePed)
         SetEntityAsNoLongerNeeded(horsePed)
@@ -1222,7 +1222,7 @@ CreateThread(function()
                             --                             Clean up client-side
                             if horseBlip then RemoveBlip(horseBlip) horseBlip = nil end
                             RemoveHorseTarget()
-                            SetEntityAsMissionEntity(horsePed, true, true)
+                           --SetEntityAsMissionEntity(horsePed, true, true)
                             DeleteEntity(horsePed)
                             SetEntityAsNoLongerNeeded(horsePed)
                             horsePed = 0
