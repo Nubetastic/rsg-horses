@@ -1064,18 +1064,19 @@ RegisterNetEvent('rsg-horses:client:MenuDel', function(data)
 
     local options = {}
     for k, v in pairs(horses) do
-        -- Calculate sell price (50% of original)
+        -- Calculate sell price (50% of original + level bonus)
         local sellPrice = 0
+        local horseLevel = CalculateHorseLevel(v.horsexp)
         for _, horseSetting in pairs(HorseSettingsCache) do
             if horseSetting.horsemodel == v.horse then
-                sellPrice = horseSetting.horseprice * 0.5
+                sellPrice = (horseSetting.horseprice * 0.5) + (horseLevel * (horseSetting.horseprice * Config.HorseTraining.SellPricePerLevel))
                 break
             end
         end
         
         options[#options + 1] = {
             title = v.name,
-            description = string.format(locale('cl_sell_horse_desc'), sellPrice, CalculateHorseLevel(v.horsexp), v.horsexp),
+            description = string.format(locale('cl_sell_horse_desc'), sellPrice, horseLevel, v.horsexp),
             icon = 'fa-solid fa-horse',
             arrow = true,
             onSelect = function()

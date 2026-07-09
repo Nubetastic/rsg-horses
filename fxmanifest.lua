@@ -9,6 +9,7 @@ shared_scripts {
     '@ox_lib/init.lua',
     'shared/config.lua',
     'shared/functions.lua',
+    'shared/training_config.lua',
 }
 
 client_scripts {
@@ -17,7 +18,8 @@ client_scripts {
     'client/horses.lua',
     'client/action.lua',
     'client/horseinfo.lua',
-    'client/dataview.lua'
+    'client/dataview.lua',
+    'client/training_client.lua',
 }
 
 files {
@@ -29,7 +31,8 @@ files {
 server_scripts {
     '@oxmysql/lib/MySQL.lua',
     'server/server.lua',
-    'server/versionchecker.lua'
+    'server/versionchecker.lua',
+    'server/training_server.lua'
 }
 
 dependencies {
