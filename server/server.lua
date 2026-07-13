@@ -835,6 +835,7 @@ end)
 -- horse check system
 ----------------------------------
 UpkeepInterval = function()
+    if not Config.EnableHorseAge then return end
 
     local result = MySQL.query.await('SELECT * FROM player_horses')
 
@@ -922,7 +923,11 @@ UpkeepInterval = function()
         print(locale('sv_print'))
     end
 
-    SetTimeout(Config.CheckCycle * (60 * 1000), UpkeepInterval)
+    if Config.EnableHorseAge then
+        SetTimeout(Config.CheckCycle * (60 * 1000), UpkeepInterval)
+    end
 end
 
-SetTimeout(Config.CheckCycle * (60 * 1000), UpkeepInterval)
+if Config.EnableHorseAge then
+    SetTimeout(Config.CheckCycle * (60 * 1000), UpkeepInterval)
+end
